@@ -24,12 +24,12 @@
   // Log sections
   // =====================================================================
   function showLogTab (name) {
-    document.querySelectorAll('.logseg button').forEach((b) => b.classList.toggle('on', b.dataset.logtab === name));
+    document.querySelectorAll('.logseg button[data-logtab]').forEach((b) => b.classList.toggle('on', b.dataset.logtab === name));
     document.querySelectorAll('[data-logpanel]').forEach((p) => { p.hidden = p.dataset.logpanel !== name; });
     if (name === 'meds') { $('med-time').value = nowLocalInput(); renderMeds(); }
     if (name === 'period') { if (!$('period-date').value) $('period-date').value = dayKey(Date.now()); renderPeriodPanel(); }
   }
-  document.querySelectorAll('.logseg button').forEach((b) => b.addEventListener('click', () => showLogTab(b.dataset.logtab)));
+  document.querySelectorAll('.logseg button[data-logtab]').forEach((b) => b.addEventListener('click', () => showLogTab(b.dataset.logtab)));
 
   // =====================================================================
   // Food search (Open Food Facts) + meal basket + favourites
@@ -116,6 +116,64 @@
       ul.appendChild(el('li', 'muted', e.message && /busy/.test(e.message) ? e.message : 'Couldn’t reach the food database. Check your connection, or add it by hand below.'));
     }
   }
+  // ---------- barcode scanning ----------
+  let scanStream = null, scanTimer = null;
+  function closeScanner () {
+    clearInterval(scanTimer); scanTimer = null;
+    if (scanStream) { scanStream.getTracks().forEach((t) => t.stop()); scanStream = null; }
+    $('scan-video').srcObject = null;
+    $('scanner').hidden = true;
+  }
+  async function lookupBarcode (code) {
+    code = String(code).replace(/\D/g, '');
+    if (code.length < 6) { $('scan-status').textContent = 'That barcode looks too short.'; return; }
+    $('scan-status').textContent = 'Looking up ' + code + '…';
+    try {
+      const res = await fetch('https://world.openfoodfacts.org/api/v2/product/' + code + '.json?fields=product_name,brands,nutriments,serving_quantity,serving_size');
+      const data = res.ok ? await res.json() : null;
+      const p = data && data.product;
+      if (!p || data.status === 0) { $('scan-status').textContent = 'Not found in the food database. Try searching by name, or add it by hand.'; return; }
+      const per100 = p.nutriments && p.nutriments.carbohydrates_100g;
+      if (per100 == null) { $('scan-status').textContent = 'Found “' + (p.product_name || code) + '”, but it has no carb info. Add it by hand.'; $('qa-name').value = p.product_name || ''; return; }
+      const serving = Number(p.serving_quantity) > 0 ? Math.round(Number(p.serving_quantity)) : 100;
+      const c = Math.round(Number(per100) * 10) / 10;
+      closeScanner();
+      addToBasket({ name: p.product_name || 'Scanned item', grams: serving, per100: c, carbs: (c * serving) / 100 });
+    } catch (e) {
+      $('scan-status').textContent = 'Couldn’t reach the food database. Check your connection.';
+    }
+  }
+  async function openScanner () {
+    $('scanner').hidden = false;
+    $('scan-code').value = '';
+    const supported = 'BarcodeDetector' in window && navigator.mediaDevices && navigator.mediaDevices.getUserMedia;
+    $('scan-video').hidden = !supported;
+    if (!supported) { $('scan-status').textContent = 'Camera scanning isn’t supported in this browser (it works in Chrome on Android). Type the numbers under the barcode instead.'; return; }
+    $('scan-status').textContent = 'Point your camera at the barcode…';
+    try {
+      const formats = (await BarcodeDetector.getSupportedFormats()).filter((f) => ['ean_13', 'ean_8', 'upc_a', 'upc_e'].includes(f));
+      const detector = new BarcodeDetector({ formats: formats.length ? formats : undefined });
+      scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+      const v = $('scan-video');
+      v.srcObject = scanStream;
+      await v.play();
+      scanTimer = setInterval(async () => {
+        if (!scanStream || v.readyState < 2) return;
+        try {
+          const codes = await detector.detect(v);
+          if (codes.length) { clearInterval(scanTimer); scanTimer = null; if (navigator.vibrate) navigator.vibrate(60); lookupBarcode(codes[0].rawValue); }
+        } catch (e) { /* keep trying */ }
+      }, 300);
+    } catch (e) {
+      $('scan-video').hidden = true;
+      $('scan-status').textContent = 'Couldn’t open the camera (permission blocked?). Type the barcode numbers instead.';
+    }
+  }
+  $('scan-open').addEventListener('click', openScanner);
+  $('scan-close').addEventListener('click', closeScanner);
+  $('scan-form').addEventListener('submit', (ev) => { ev.preventDefault(); lookupBarcode($('scan-code').value); });
+  C.hooks.view.push((v) => { if (v !== 'log') closeScanner(); });
+
   $('food-form').addEventListener('submit', (ev) => {
     ev.preventDefault();
     const q = $('food-q').value.trim();
@@ -502,11 +560,12 @@
       if (!document.querySelector('[data-logpanel="meds"]').hidden) renderMeds();
       if (!document.querySelector('[data-logpanel="period"]').hidden) renderPeriodPanel();
     }
-    if (!$('view-trends').hidden) renderTrends();
+    if (!$('view-trends').hidden) { renderTrends(); if (!historyTried && C.periods.length) { historyTried = true; buildHistory(); } }
   });
+  let historyTried = false;
   C.hooks.view.push((view) => {
     if (view === 'log') renderFavs();
-    if (view === 'trends') { renderTrends(); buildHistory(); }
+    if (view === 'trends') { renderTrends(); if (C.periods.length) historyTried = true; buildHistory(); }
   });
   renderFavs();
 })();

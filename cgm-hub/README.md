@@ -7,10 +7,13 @@ A personal phone web app that reads your Nightscout site and shows:
 - **Insights**: time in range, average, variability, lows/highs, est. A1c, 14-day range
 - **Bolus calculator**: the same steps as Diabetes:M, showing all the math
 - **Log**: save insulin and carbs to Nightscout
-  - **Food search** (Open Food Facts) to build a meal and add up carbs, plus ⭐ favourite meals (long-press a favourite to remove it)
+  - **Food search** (Open Food Facts) and 📷 **barcode scanning** (camera in Chrome on Android, or type the number) to build a meal and add up carbs, plus ⭐ favourite meals (long-press a favourite to remove it)
   - **Meds & supplements**: save your list once, then tap twice to log
   - **Period**: log start/end days
-- **Trends**: your cycle day and phase, and glucose by cycle phase (period, follicular, ovulation, luteal)
+- **Trends** (14 / 30 / 90 days):
+  - 💡 **Insights** with possible causes and ideas to try: overnight lows, early-morning rises, big rises or lows after meals, rebound highs, stacked corrections, unlogged rises, toughest time of day, low time, variability, weekday vs weekend, foods that spike you most, meds/supplements, week-over-week progress
+  - **Your typical day** (AGP-style chart), time-of-day breakdown, meals & foods
+  - your cycle day and phase, and glucose by cycle phase (period, follicular, ovulation, luteal)
 
 It runs only in your browser. Your data stays in Nightscout; your token and settings stay on your phone.
 
@@ -21,6 +24,11 @@ It runs only in your browser. Your data stays in Nightscout; your token and sett
 1. In Nightscout: ☰ → **Admin Tools** → **Add new Subject** → name `cgmhub`, roles `readable` + `careportal`. Copy the token.
 2. Open CGM Hub → **Settings** → paste your Nightscout URL and token → fill in your numbers → tick the box → **Save**.
 3. Phone: open the browser menu → **Add to Home screen**.
+
+## Import Libre history
+
+Settings → **Import Libre history**. Download the CSV from libreview.com (Glucose History → Download glucose data), then pick the file.
+The token needs a role with `api:entries:create` during the import. Readings Nightscout already has (within 10 minutes) are skipped, and re-importing never duplicates.
 
 ## Hosting
 
