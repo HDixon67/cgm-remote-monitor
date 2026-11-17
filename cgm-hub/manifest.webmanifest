@@ -1,0 +1,13 @@
+{
+  "name": "CGM Hub",
+  "short_name": "CGM Hub",
+  "description": "Personal glucose dashboard, bolus calculator and logbook for Nightscout.",
+  "start_url": "./#home",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#121211",
+  "theme_color": "#1a1a19",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
