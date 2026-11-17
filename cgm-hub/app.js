@@ -853,8 +853,11 @@
     let mg = 120;
     for (let t = now - 14 * DAY; t <= now; t += 5 * MIN) {
       const h = new Date(t).getHours() + new Date(t).getMinutes() / 60;
-      const meal = [8, 12.5, 18.5].reduce((s, m) => s + 70 * Math.exp(-Math.pow((h - m - 1) / 0.9, 2)), 0);
-      const base = 115 + 25 * Math.sin((h / 24) * Math.PI * 2) + meal;
+      const day = Math.floor((t - (now - 14 * DAY)) / DAY);
+      const meal = [[8, 120], [12.5, 60], [18.5, 75]].reduce((s, [m, a]) => s + a * Math.exp(-Math.pow((h - m - 0.9) / 0.8, 2)), 0);
+      const dawn = 45 / (1 + Math.exp(-(h - 5.5) * 1.5)) * (h < 9 ? 1 : Math.max(0, 1 - (h - 9) / 2));
+      const nightLow = day % 4 === 1 && h > 2 && h < 4 ? -60 : 0;
+      const base = 105 + meal + dawn + nightLow;
       mg += (base - mg) * 0.25 + (Math.random() - 0.5) * 8;
       ents.push({ date: t, sgv: Math.round(Math.max(45, mg)), direction: 'Flat' });
     }
@@ -956,7 +959,7 @@
   // internal API for features.js
   window.CGMHubCore = {
     get S () { return S; }, get entries () { return entries; }, get treatments () { return treatments; }, get periods () { return periods; },
-    hooks, apiGet, apiPostTreatment, refresh, saveSettings, go, showMsg,
+    hooks, apiGet, apiUrl, apiPostTreatment, refresh, saveSettings, go, showMsg, normEntries, normTreatments, isBasal, stats,
     $, el, sv, fmtBG, toMg, fromMg, mmol, unitLabel, clockTime, durText, toLocalInput, statusOf, treatmentLabel, iconFor,
     MIN, HOUR, DAY, MGDL_PER_MMOL,
   };
