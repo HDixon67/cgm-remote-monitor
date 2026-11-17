@@ -280,8 +280,12 @@
 
   // ---------- math: bolus (same steps Diabetes:M shows) ----------
   function bolusCalc (bgUser, carbs, ob) {
-    const ratio = Number(S.ratio), isf = Number(S.isf), target = Number(S.target);
+    const now = new Date();
+    const R = valueNow('ratio', now), I = valueNow('isf', now), T = valueNow('target', now);
+    const ratio = R.v, isf = I.v, target = T.v;
     const steps = [];
+    const fromTxt = (x) => (x.multi ? ` (your ${fmtClock(x.from)} setting)` : '');
+    steps.push({ text: `Using right now: carb ratio ${ratio}${fromTxt(R)}, sensitivity ${isf}${fromTxt(I)}, target ${target}${fromTxt(T)}` });
     const IOB = ob.iob, IOBcarb = ob.iobCarb, IOBcorr = ob.iobCorr;
     steps.push({ text: `Insulin on board: ${r2(IOB)}u (${r2(IOBcarb)}u covering food + ${r2(IOBcorr)}u correction)` });
     const carbPart = carbs > 0 ? carbs / ratio : 0;
@@ -542,9 +546,10 @@
   // ---------- rendering: calculator ----------
   function calcReady () {
     const missing = [];
-    if (!(Number(S.ratio) > 0)) missing.push('carb ratio');
-    if (!(Number(S.isf) > 0)) missing.push('sensitivity');
-    if (!(Number(S.target) > 0)) missing.push('target');
+    const ok = (k) => { const l = getSched(k); return l.length && l.every((x) => Number(x.v) > 0); };
+    if (!ok('ratio')) missing.push('carb ratio');
+    if (!ok('isf')) missing.push('sensitivity');
+    if (!ok('target')) missing.push('target');
     if (!S.confirmed) missing.push('the “I’ve checked these numbers” box');
     return missing;
   }
@@ -618,17 +623,87 @@
   }
 
   // ---------- settings ----------
+  // Schedules: [{t: 'HH:MM', v: number}] sorted by time, like the Nightscout profile.
+  const KINDS = ['ratio', 'isf', 'target'];
+  const fmtClock = (hhmm) => {
+    const [h, m] = hhmm.split(':').map(Number);
+    return new Date(2000, 0, 1, h, m).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  };
+  let formUnits = S.units;
+  let confirmTouched = false;
+
   function fillSettingsForm () {
     $('set-url').value = S.url; $('set-token').value = S.token; $('set-demo').checked = !!S.demo;
-    $('set-units').value = S.units; $('set-round').value = String(S.round);
-    $('set-low').value = S.low; $('set-high').value = S.high; $('set-target').value = S.target ?? '';
-    $('set-ratio').value = S.ratio ?? ''; $('set-isf').value = S.isf ?? '';
+    $('set-units').value = S.units; formUnits = S.units; $('set-round').value = String(S.round);
+    $('set-low').value = S.low; $('set-high').value = S.high;
     $('set-dia').value = S.dia; $('set-carbshr').value = S.carbsHr;
-    $('set-confirmed').checked = !!S.confirmed;
+    $('set-confirmed').checked = !!S.confirmed; confirmTouched = false;
+    KINDS.forEach((k) => renderSched(k, getSched(k)));
+    document.querySelectorAll('.unit-label').forEach((e) => { e.textContent = unitLabel(); });
   }
-  function numOrNull (v) { const n = Number(v); return v === '' || isNaN(n) ? null : n; }
+
+  function renderSched (kind, list) {
+    const box = $('sched-' + kind).querySelector('.sched-rows');
+    box.textContent = '';
+    const rows = list.length ? list : [{ t: '00:00', v: null }];
+    const nowIdx = schedIndexAt(rows, new Date());
+    rows.forEach((row, i) => {
+      const r = el('div', 'sched-row' + (i === nowIdx ? ' now' : ''));
+      r.appendChild(el('span', 'from', 'From'));
+      const ti = el('input'); ti.type = 'time'; ti.value = row.t; ti.setAttribute('aria-label', 'Start time');
+      if (i === 0) { ti.value = '00:00'; ti.disabled = true; } // the first period always starts at midnight
+      const vi = el('input'); vi.type = 'number'; vi.step = kind === 'ratio' ? '0.5' : '0.1'; vi.inputMode = 'decimal';
+      vi.value = row.v ?? ''; vi.setAttribute('aria-label', 'Value');
+      const del = el('button', 'del', '✕'); del.type = 'button'; del.setAttribute('aria-label', 'Remove this time');
+      del.disabled = i === 0;
+      del.addEventListener('click', () => { r.remove(); });
+      r.append(ti, vi, del);
+      box.appendChild(r);
+    });
+  }
+  function readSched (kind) {
+    const rows = [...$('sched-' + kind).querySelectorAll('.sched-row')];
+    const out = [];
+    for (const r of rows) {
+      const [ti, vi] = r.querySelectorAll('input');
+      const v = numOrNull(vi.value);
+      if (v == null || !ti.value) continue;
+      out.push({ t: ti.value, v });
+    }
+    out.sort((a, b) => a.t.localeCompare(b.t));
+    return out.filter((x, i, a) => i === 0 || x.t !== a[i - 1].t);
+  }
+  function addSchedRow (kind) {
+    const cur = readSched(kind);
+    const last = cur[cur.length - 1];
+    let nextT = '12:00';
+    if (last) { const h = Math.min(23, Number(last.t.slice(0, 2)) + 3); nextT = String(h).padStart(2, '0') + ':00'; }
+    cur.push({ t: nextT, v: null });
+    renderSched(kind, cur);
+    const inputs = $('sched-' + kind).querySelectorAll('.sched-row:last-child input');
+    if (inputs[1]) inputs[1].focus();
+  }
+  function getSched (kind) {
+    if (S.sched && Array.isArray(S.sched[kind]) && S.sched[kind].length) return S.sched[kind];
+    return S[kind] != null ? [{ t: '00:00', v: Number(S[kind]) }] : []; // older single-value settings
+  }
+  function schedIndexAt (list, date) {
+    const hhmm = String(date.getHours()).padStart(2, '0') + ':' + String(date.getMinutes()).padStart(2, '0');
+    let idx = 0;
+    list.forEach((x, i) => { if (x.t <= hhmm) idx = i; });
+    return idx;
+  }
+  function valueNow (kind, date) {
+    const list = getSched(kind);
+    if (!list.length) return null;
+    const i = schedIndexAt(list, date || new Date());
+    return { v: Number(list[i].v), from: list[i].t, multi: list.length > 1 };
+  }
+
+  function numOrNull (v) { const n = Number(v); return v === '' || v == null || isNaN(n) ? null : n; }
   function readSettingsForm () {
-    const prevNumbers = JSON.stringify([S.ratio, S.isf, S.target, S.units]);
+    const sched = { ratio: readSched('ratio'), isf: readSched('isf'), target: readSched('target') };
+    const prevNumbers = JSON.stringify([KINDS.map(getSched), S.units]);
     const next = Object.assign({}, S, {
       url: $('set-url').value.trim(),
       token: $('set-token').value.trim(),
@@ -637,34 +712,39 @@
       round: Number($('set-round').value) || 0.5,
       low: numOrNull($('set-low').value) ?? S.low,
       high: numOrNull($('set-high').value) ?? S.high,
-      target: numOrNull($('set-target').value),
-      ratio: numOrNull($('set-ratio').value),
-      isf: numOrNull($('set-isf').value),
+      sched, ratio: null, isf: null, target: null,
       dia: numOrNull($('set-dia').value) || 4,
       carbsHr: numOrNull($('set-carbshr').value) || 30,
       confirmed: $('set-confirmed').checked,
     });
-    // if dose numbers changed but the box wasn't re-ticked this time, keep what was ticked
-    if (JSON.stringify([next.ratio, next.isf, next.target, next.units]) !== prevNumbers && !$('set-confirmed').checked) next.confirmed = false;
+    // changed dose numbers need the box ticked again
+    if (JSON.stringify([KINDS.map((k) => sched[k]), next.units]) !== prevNumbers && !confirmTouched) next.confirmed = false;
     return next;
   }
-  // when units switch, convert glucose-based numbers so they stay the same in real terms
+  // when units switch, convert glucose-based numbers so they mean the same thing
   function onUnitsChange () {
     const to = $('set-units').value;
-    if (to === S.units) return;
+    if (to === formUnits) return;
     const f = to === 'mmol' ? 1 / MGDL_PER_MMOL : MGDL_PER_MMOL;
     const dp = to === 'mmol' ? 1 : 0;
-    ['set-low', 'set-high', 'set-target', 'set-isf'].forEach((id) => {
-      const v = numOrNull($(id).value);
-      if (v != null) $(id).value = (v * f).toFixed(dp);
-    });
+    const conv = (input) => { const v = numOrNull(input.value); if (v != null) input.value = (v * f).toFixed(dp); };
+    ['set-low', 'set-high'].forEach((id) => conv($(id)));
+    ['isf', 'target'].forEach((k) => $('sched-' + k).querySelectorAll('.sched-row input[type=number]').forEach(conv));
+    formUnits = to;
+    document.querySelectorAll('.unit-label').forEach((e) => { e.textContent = to === 'mmol' ? 'mmol/L' : 'mg/dL'; });
   }
 
   async function fillFromProfile () {
     try {
       let store;
-      if (S.demo) store = { units: 'mmol', dia: 4, carbs_hr: 30, carbratio: [{ value: 8 }], sens: [{ value: 2.2 }], target_low: [{ value: 6 }], target_high: [{ value: 6 }] };
-      else {
+      if (S.demo || $('set-demo').checked) {
+        store = {
+          units: 'mmol', dia: 4, carbs_hr: 20,
+          carbratio: [{ time: '00:00', value: 10 }, { time: '07:00', value: 9 }, { time: '14:00', value: 8 }, { time: '20:00', value: 10 }],
+          sens: [{ time: '00:00', value: 2.2 }, { time: '20:00', value: 3.5 }],
+          target_low: [{ time: '00:00', value: 6 }], target_high: [{ time: '00:00', value: 6 }],
+        };
+      } else {
         if (!$('set-url').value || !$('set-token').value) throw new Error('Add your URL and token first.');
         S.url = $('set-url').value.trim(); S.token = $('set-token').value.trim();
         const profs = await apiGet('/api/v1/profile.json', {});
@@ -672,23 +752,33 @@
         store = p && p.store && p.store[p.defaultProfile];
         if (!store) throw new Error('Your Nightscout profile is empty. Fill it in under ☰ → Profile Editor, or type the numbers here.');
       }
-      const secs = (() => { const d = new Date(); return d.getHours() * 3600 + d.getMinutes() * 60; })();
-      const at = (arr) => {
-        if (!Array.isArray(arr) || !arr.length) return null;
-        let v = arr[0].value;
-        for (const x of arr) if ((x.timeAsSeconds ?? 0) <= secs) v = x.value;
-        return Number(v);
+      const toHHMM = (x) => {
+        if (typeof x.time === 'string' && /^\d{1,2}:\d{2}/.test(x.time)) return x.time.slice(0, 5).padStart(5, '0');
+        const s = Number(x.timeAsSeconds) || 0;
+        return String(Math.floor(s / 3600)).padStart(2, '0') + ':' + String(Math.floor((s % 3600) / 60)).padStart(2, '0');
       };
-      const profMmol = /mmol/i.test(store.units || '') || (at(store.sens) != null && at(store.sens) < 20);
-      const conv = (v) => (v == null ? null : profMmol === mmol() ? v : profMmol ? v * MGDL_PER_MMOL : v / MGDL_PER_MMOL);
-      const tl = at(store.target_low), th = at(store.target_high);
-      if (at(store.carbratio)) $('set-ratio').value = at(store.carbratio);
-      if (at(store.sens)) $('set-isf').value = r1(conv(at(store.sens)));
-      if (tl != null) $('set-target').value = r1(conv(th != null ? (tl + th) / 2 : tl));
+      const list = (arr) => (Array.isArray(arr) ? arr.map((x) => ({ t: toHHMM(x), v: Number(x.value) })).filter((x) => !isNaN(x.v)).sort((a, b) => a.t.localeCompare(b.t)) : []);
+      const valAt = (lst, t) => { let v = lst.length ? lst[0].v : null; for (const x of lst) if (x.t <= t) v = x.v; return v; };
+      const sens = list(store.sens);
+      const profMmol = /mmol/i.test(store.units || '') || (sens.length && sens[0].v < 20);
+      const formMmol = $('set-units').value === 'mmol';
+      const conv = (v) => (profMmol === formMmol ? v : profMmol ? v * MGDL_PER_MMOL : v / MGDL_PER_MMOL);
+      const dp = formMmol ? 1 : 0;
+      const fix = (v) => Number(conv(v).toFixed(dp));
+      const tl = list(store.target_low), th = list(store.target_high);
+      const tTimes = [...new Set(tl.map((x) => x.t).concat(th.map((x) => x.t)))].sort();
+      const target = tTimes.map((t) => {
+        const lo = valAt(tl, t), hi = valAt(th, t);
+        return { t, v: fix(hi != null && lo != null ? (lo + hi) / 2 : (lo ?? hi)) };
+      });
+      const ratio = list(store.carbratio);
+      if (ratio.length) { ratio[0].t = '00:00'; renderSched('ratio', ratio); }
+      if (sens.length) { const l = sens.map((x) => ({ t: x.t, v: fix(x.v) })); l[0].t = '00:00'; renderSched('isf', l); }
+      if (target.length) { target[0].t = '00:00'; renderSched('target', target); }
       if (store.dia) $('set-dia').value = store.dia;
       if (store.carbs_hr) $('set-carbshr').value = store.carbs_hr;
-      $('set-confirmed').checked = false;
-      showMsg('set-msg', 'Filled in from your Nightscout profile (for this time of day). Check them, tick the box, then Save.', 'ok');
+      $('set-confirmed').checked = false; confirmTouched = false;
+      showMsg('set-msg', 'Filled in all your times from your Nightscout profile. Check them, tick the box, then Save.', 'ok');
     } catch (e) {
       showMsg('set-msg', e.message, 'warn');
     }
@@ -801,6 +891,8 @@
     });
 
     $('set-units').addEventListener('change', onUnitsChange);
+    $('set-confirmed').addEventListener('change', () => { confirmTouched = true; });
+    document.querySelectorAll('.sched [data-add]').forEach((b) => b.addEventListener('click', () => addSchedRow(b.closest('.sched').dataset.kind)));
     $('set-from-profile').addEventListener('click', fillFromProfile);
     $('set-save').addEventListener('click', async () => {
       const next = readSettingsForm();
@@ -809,7 +901,8 @@
       const changedSource = next.url !== S.url || next.token !== S.token || next.demo !== S.demo;
       S = next; saveSettings();
       if (changedSource) { entries = []; treatments = []; demoStore = null; }
-      showMsg('set-msg', '✅ Saved.', 'ok');
+      showMsg('set-msg', S.confirmed ? '✅ Saved.' : '✅ Saved. To use the calculator, tick “I’ve checked these numbers” and Save again.', S.confirmed ? 'ok' : 'warn');
+      fillSettingsForm();
       await refresh(true);
     });
 
