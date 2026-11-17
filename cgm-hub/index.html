@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>CGM Hub</title>
+  <meta name="description" content="A personal glucose dashboard, bolus calculator and logbook that reads from your Nightscout site.">
+  <meta name="theme-color" content="#1a1a19">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main id="app">
+
+    <!-- ============ HOME ============ -->
+    <section class="view" id="view-home" data-view="home">
+      <header class="hero card">
+        <div class="hero-top">
+          <div>
+            <div class="hero-value"><span id="bg-now">--</span><span class="hero-arrow" id="bg-arrow" aria-hidden="true"></span></div>
+            <div class="hero-sub"><span id="bg-delta">&nbsp;</span> <span class="unit-label"></span></div>
+          </div>
+          <div class="status-pill" id="bg-status"><span class="dot"></span><span id="bg-status-text">Connecting…</span></div>
+        </div>
+        <div class="hero-meta" id="bg-age">&nbsp;</div>
+        <button class="alert-banner" id="forecast-banner" hidden></button>
+      </header>
+
+      <div class="card chart-card">
+        <div class="chart-head">
+          <h2>Glucose</h2>
+          <div class="seg" role="tablist" aria-label="Chart time range">
+            <button data-range="3">3h</button>
+            <button data-range="6" class="on">6h</button>
+            <button data-range="12">12h</button>
+            <button data-range="24">24h</button>
+          </div>
+        </div>
+        <div class="chart-wrap" id="chart-wrap">
+          <svg id="chart" role="img" aria-label="Glucose chart"></svg>
+          <div class="tooltip" id="chart-tip" hidden></div>
+        </div>
+        <div class="legend">
+          <span><i class="sw sw-low"></i>Low</span>
+          <span><i class="sw sw-in"></i>In range</span>
+          <span><i class="sw sw-high"></i>High</span>
+          <span><i class="sw sw-fc"></i>Forecast</span>
+          <span><i class="sw sw-ins"></i>Insulin</span>
+          <span><i class="sw sw-carb"></i>Carbs</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>On board now</h2>
+          <button class="link" data-goto="log">+ Log</button>
+        </div>
+        <div class="ob-grid">
+          <div class="ob ob-ins">
+            <div class="ob-label">💧 Insulin</div>
+            <div class="ob-value"><span id="iob">0.0</span><small>u</small></div>
+            <div class="bar"><span id="iob-bar"></span></div>
+            <div class="ob-sub" id="iob-left">&nbsp;</div>
+          </div>
+          <div class="ob ob-carb">
+            <div class="ob-label">🍽️ Carbs</div>
+            <div class="ob-value"><span id="cob">0</span><small>g</small></div>
+            <div class="bar"><span id="cob-bar"></span></div>
+            <div class="ob-sub" id="cob-left">&nbsp;</div>
+          </div>
+        </div>
+        <ul class="ob-list" id="ob-list"></ul>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>Insights</h2><span class="muted small">last 24 hours</span></div>
+        <div class="tiles" id="tiles"></div>
+        <div class="split-wrap">
+          <div class="split-title">14-day range <span class="muted small" id="split-n"></span></div>
+          <div class="split" id="split"></div>
+          <div class="split-labels" id="split-labels"></div>
+        </div>
+      </div>
+
+      <p class="foot muted small" id="last-sync">&nbsp;</p>
+    </section>
+
+    <!-- ============ CALCULATOR ============ -->
+    <section class="view" id="view-calc" data-view="calc" hidden>
+      <div class="card">
+        <h2>Bolus calculator</h2>
+        <p class="muted small">Uses the same steps as Diabetes:M. It only suggests a dose. You decide.</p>
+        <div class="notice warn" id="calc-blocked" hidden></div>
+
+        <label class="field">
+          <span>Glucose <span class="unit-label"></span></span>
+          <input type="number" inputmode="decimal" step="0.1" id="calc-bg">
+          <small class="muted" id="calc-bg-src">&nbsp;</small>
+        </label>
+        <label class="field">
+          <span>Carbs (g)</span>
+          <input type="number" inputmode="decimal" step="1" min="0" id="calc-carbs" placeholder="0">
+        </label>
+
+        <div class="result" id="calc-result">
+          <div class="result-label">Suggested dose</div>
+          <div class="result-value"><span id="calc-dose">–</span><small>u</small></div>
+          <div class="muted small" id="calc-raw">&nbsp;</div>
+        </div>
+        <div class="notice danger" id="calc-low" hidden>⚠️ Your glucose is low. Treat the low first. No bolus suggested.</div>
+
+        <details class="math" open>
+          <summary>Show the math</summary>
+          <ol id="calc-steps"></ol>
+        </details>
+
+        <button class="btn primary" id="calc-log">Log this dose + carbs</button>
+      </div>
+    </section>
+
+    <!-- ============ LOG ============ -->
+    <section class="view" id="view-log" data-view="log" hidden>
+      <div class="card">
+        <h2>Log</h2>
+        <p class="muted small">Saves to Nightscout, so your other apps that read from Nightscout see it too.</p>
+        <label class="field"><span>Rapid insulin (u)</span>
+          <input type="number" inputmode="decimal" step="0.5" min="0" id="log-insulin" placeholder="0"></label>
+        <label class="field"><span>Carbs (g)</span>
+          <input type="number" inputmode="decimal" step="1" min="0" id="log-carbs" placeholder="0"></label>
+        <label class="field"><span>Food / note (optional)</span>
+          <input type="text" id="log-note" maxlength="140" placeholder="e.g. Chalupa"></label>
+        <label class="field"><span>When</span>
+          <input type="datetime-local" id="log-time"></label>
+        <button class="btn primary" id="log-save">Save to Nightscout</button>
+        <div class="notice" id="log-msg" hidden></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Today’s log</h2></div>
+        <ul class="ob-list" id="log-list"></ul>
+      </div>
+    </section>
+
+    <!-- ============ SETTINGS ============ -->
+    <section class="view" id="view-settings" data-view="settings" hidden>
+      <div class="card">
+        <h2>Connect to Nightscout</h2>
+        <label class="field"><span>Nightscout URL</span>
+          <input type="url" id="set-url" placeholder="https://your-site.code.run" autocomplete="off"></label>
+        <label class="field"><span>Access token</span>
+          <input type="password" id="set-token" placeholder="cgmhub-1234abcd…" autocomplete="off"></label>
+        <details class="help">
+          <summary>How do I get a token?</summary>
+          <ol>
+            <li>Open your Nightscout site and log in.</li>
+            <li>☰ menu → <b>Admin Tools</b> → <b>Add new Subject</b>.</li>
+            <li>Name: <code>cgmhub</code>. Roles: <code>readable</code> and <code>careportal</code>. Save.</li>
+            <li>Copy the token next to it (it starts with <code>cgmhub-</code>) and paste it here.</li>
+          </ol>
+          <p class="muted small">The token stays on this phone only. Don’t use your API_SECRET here.</p>
+        </details>
+        <label class="check"><input type="checkbox" id="set-demo"> Demo mode (fake data, nothing is saved)</label>
+      </div>
+
+      <div class="card">
+        <h2>Your numbers</h2>
+        <p class="muted small">From your care team. The calculator won’t run until you confirm them below.</p>
+        <div class="grid2">
+          <label class="field"><span>Units</span>
+            <select id="set-units"><option value="mmol">mmol/L</option><option value="mgdl">mg/dL</option></select></label>
+          <label class="field"><span>Dose rounding</span>
+            <select id="set-round"><option value="0.5">0.5 u</option><option value="1">1 u</option><option value="0.1">0.1 u</option></select></label>
+          <label class="field"><span>Low line</span><input type="number" step="0.1" id="set-low"></label>
+          <label class="field"><span>High line</span><input type="number" step="0.1" id="set-high"></label>
+          <label class="field"><span>Carb ratio (g per 1u)</span><input type="number" step="0.1" id="set-ratio"></label>
+          <label class="field"><span>Sensitivity (per 1u)</span><input type="number" step="0.1" id="set-isf"></label>
+          <label class="field"><span>Target glucose</span><input type="number" step="0.1" id="set-target"></label>
+          <label class="field"><span>Insulin duration (h)</span><input type="number" step="0.5" id="set-dia"></label>
+          <label class="field"><span>Carb absorption (g/h)</span><input type="number" step="1" id="set-carbshr"></label>
+        </div>
+        <button class="btn" id="set-from-profile">Fill in from my Nightscout profile</button>
+        <label class="check"><input type="checkbox" id="set-confirmed"> I’ve checked these numbers match what my care team gave me.</label>
+        <button class="btn primary" id="set-save">Save</button>
+        <div class="notice" id="set-msg" hidden></div>
+      </div>
+      <p class="foot muted small">CGM Hub is a personal tool, not a medical device. Always double-check doses. Keep your Libre app alarms on.</p>
+    </section>
+  </main>
+
+  <nav class="tabbar" aria-label="Main">
+    <button data-goto="home" class="on"><span aria-hidden="true">🏠</span>Home</button>
+    <button data-goto="calc"><span aria-hidden="true">🧮</span>Bolus</button>
+    <button data-goto="log" class="add"><span aria-hidden="true">＋</span>Log</button>
+    <button data-goto="settings"><span aria-hidden="true">⚙️</span>Settings</button>
+  </nav>
+
+  <script src="app.js"></script>
+</body>
+</html>
