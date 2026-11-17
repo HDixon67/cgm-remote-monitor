@@ -23,7 +23,7 @@
           </div>
           <div class="status-pill" id="bg-status"><span class="dot"></span><span id="bg-status-text">Connecting…</span></div>
         </div>
-        <div class="hero-meta" id="bg-age">&nbsp;</div>
+        <div class="hero-meta"><span id="bg-age">&nbsp;</span> <button class="chip" id="cycle-chip" data-goto="trends" hidden></button></div>
         <button class="alert-banner" id="forecast-banner" hidden></button>
       </header>
 
@@ -121,6 +121,41 @@
 
     <!-- ============ LOG ============ -->
     <section class="view" id="view-log" data-view="log" hidden>
+      <div class="seg logseg" role="tablist" aria-label="What to log">
+        <button data-logtab="food" class="on">🍽️ Food</button>
+        <button data-logtab="meds">💊 Meds</button>
+        <button data-logtab="period">🩸 Period</button>
+      </div>
+
+      <div data-logpanel="food">
+      <div class="card">
+        <div class="card-head"><h2>Find food</h2><span class="muted small">Open Food Facts</span></div>
+        <form class="search-row" id="food-form">
+          <input type="search" id="food-q" placeholder="e.g. banana, tortilla, Cheerios" autocomplete="off" enterkeyhint="search">
+          <button class="btn primary slim" id="food-go">Search</button>
+        </form>
+        <ul class="food-results" id="food-results"></ul>
+        <details class="quick-add">
+          <summary>Add something by hand</summary>
+          <div class="grid2">
+            <label class="field"><span>Name</span><input type="text" id="qa-name" maxlength="60" placeholder="Chalupa"></label>
+            <label class="field"><span>Carbs (g)</span><input type="number" inputmode="decimal" id="qa-carbs" min="0" step="1"></label>
+          </div>
+          <button class="btn" id="qa-add" type="button">Add to meal</button>
+        </details>
+        <div class="favs" id="fav-wrap">
+          <div class="split-title">⭐ Favourite meals</div>
+          <div class="chips" id="fav-list"></div>
+        </div>
+      </div>
+
+      <div class="card" id="basket-card" hidden>
+        <div class="card-head"><h2>This meal</h2><button class="link" id="basket-clear" type="button">Clear</button></div>
+        <ul class="basket" id="basket"></ul>
+        <div class="basket-total">Total carbs: <b id="basket-total">0</b> g</div>
+        <button class="btn" id="fav-save" type="button">⭐ Save as a favourite</button>
+      </div>
+
       <div class="card">
         <h2>Log</h2>
         <p class="muted small">Saves to Nightscout, so your other apps that read from Nightscout see it too.</p>
@@ -138,6 +173,68 @@
       <div class="card">
         <div class="card-head"><h2>Today’s log</h2></div>
         <ul class="ob-list" id="log-list"></ul>
+      </div>
+      </div>
+
+      <div data-logpanel="meds" hidden>
+        <div class="card">
+          <div class="card-head"><h2>Take a med or supplement</h2></div>
+          <p class="muted small">Tap one, then tap again to confirm.</p>
+          <div class="med-grid" id="med-buttons"></div>
+          <label class="field"><span>When</span><input type="datetime-local" id="med-time"></label>
+          <div class="notice" id="med-msg" hidden></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>Today</h2></div>
+          <ul class="ob-list" id="med-today"></ul>
+        </div>
+        <div class="card">
+          <h2>My list</h2>
+          <ul class="ob-list" id="med-list"></ul>
+          <div class="grid2">
+            <label class="field"><span>Name</span><input type="text" id="med-name" maxlength="40" placeholder="Vitamin D"></label>
+            <label class="field"><span>Dose</span><input type="text" id="med-dose" maxlength="30" placeholder="1000 IU"></label>
+          </div>
+          <label class="field"><span>Type</span>
+            <select id="med-type"><option value="medication">Medication</option><option value="supplement">Supplement</option></select></label>
+          <button class="btn" id="med-add" type="button">+ Add to my list</button>
+        </div>
+      </div>
+
+      <div data-logpanel="period" hidden>
+        <div class="card">
+          <h2>Period</h2>
+          <p class="cycle-now" id="period-now">&nbsp;</p>
+          <label class="field"><span>Date</span><input type="date" id="period-date"></label>
+          <div class="grid2">
+            <button class="btn primary" id="period-start" type="button">🩸 Period started</button>
+            <button class="btn" id="period-end" type="button">Period ended</button>
+          </div>
+          <div class="notice" id="period-msg" hidden></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>Recent periods</h2></div>
+          <ul class="ob-list" id="period-list"></ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ TRENDS ============ -->
+    <section class="view" id="view-trends" data-view="trends" hidden>
+      <div class="card">
+        <h2>Your cycle</h2>
+        <div class="cycle-stats" id="cycle-stats"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Glucose by cycle phase</h2></div>
+        <p class="muted small" id="phase-progress">&nbsp;</p>
+        <div id="phase-insights"></div>
+        <div id="phase-rows"></div>
+        <details class="help">
+          <summary>How are phases worked out?</summary>
+          <p class="small">From the period start dates you log. <b>Period</b> = your logged period days (or 5 days). <b>Ovulation</b> ≈ 14 days before your next period (± 1 day). <b>Follicular</b> = between them. <b>Luteal</b> = after ovulation until your next period. These are estimates, not medical tests.</p>
+        </details>
+        <p class="muted small">Patterns here are for talking with your care team. Don’t change doses based on this alone.</p>
       </div>
     </section>
 
@@ -203,9 +300,11 @@
     <button data-goto="home" class="on"><span aria-hidden="true">🏠</span>Home</button>
     <button data-goto="calc"><span aria-hidden="true">🧮</span>Bolus</button>
     <button data-goto="log" class="add"><span aria-hidden="true">＋</span>Log</button>
+    <button data-goto="trends"><span aria-hidden="true">📈</span>Trends</button>
     <button data-goto="settings"><span aria-hidden="true">⚙️</span>Settings</button>
   </nav>
 
   <script src="app.js"></script>
+  <script src="features.js"></script>
 </body>
 </html>

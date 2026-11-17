@@ -25,7 +25,10 @@
   // ---------- state ----------
   let S = loadSettings();
   let entries = [];      // [{t, mg, dir}] newest first, last 14 days
-  let treatments = [];   // [{t, insulin, carbs, eventType, notes, enteredBy}] last 36h, newest first
+  let treatments = [];   // [{t, insulin, carbs, eventType, notes, enteredBy, kind}] last 36h, newest first
+  let periods = [];      // period start/end events, last ~13 months, newest first
+  const hooks = { render: [], view: [], logSaved: [] };
+  const runHooks = (name, arg) => hooks[name].forEach((fn) => { try { fn(arg); } catch (e) { console.error(e); } });
   let rangeH = 6;
   let lastLongFetch = 0;
   let timer = null;
@@ -130,6 +133,8 @@
       eventType: t.eventType || '',
       notes: t.notes || t.foodType || '',
       enteredBy: t.enteredBy || '',
+      kind: t.eventType === 'Medication' ? 'med' : t.eventType === 'Period Start' ? 'period-start' : t.eventType === 'Period End' ? 'period-end' : 'dose',
+      medName: t.medName || '', medDose: t.medDose || '', medType: t.medType || '',
     }))
       .filter((t) => !isNaN(t.t))
       .sort((a, b) => b.t - a.t);
@@ -139,7 +144,8 @@
     if (S.demo) {
       if (!demoStore) demoStore = makeDemo();
       entries = normEntries(demoStore.entries);
-      treatments = normTreatments(demoStore.treatments);
+      treatments = normTreatments(demoStore.treatments.filter((t) => Date.now() - treatmentTime(t) < 36 * HOUR));
+      periods = normTreatments(demoStore.treatments.filter((t) => /^Period /.test(t.eventType)));
       return;
     }
     if (!S.url || !S.token) throw new Error('Not connected yet. Add your Nightscout URL and token in Settings.');
@@ -158,6 +164,12 @@
         .filter((e) => e.t >= now - 14 * DAY);
     }
     treatments = normTreatments(trs);
+    if (long) {
+      const since400 = new Date(now - 400 * DAY).toISOString();
+      const [ps, pe] = await Promise.all(['Period Start', 'Period End'].map((ev) =>
+        apiGet('/api/v1/treatments.json', { 'find[eventType]': ev, 'find[created_at][$gte]': since400, count: '200' }).catch(() => [])));
+      periods = normTreatments(ps.concat(pe));
+    }
   }
 
   // ---------- math: insulin + carbs on board (same curves Nightscout uses) ----------
@@ -366,6 +378,9 @@
   }
 
   function treatmentLabel (t) {
+    if (t.kind === 'med') return [t.medName || t.notes || 'Medication', t.medName ? t.medDose : ''].filter(Boolean).join(' ');
+    if (t.kind === 'period-start') return 'Period started';
+    if (t.kind === 'period-end') return 'Period ended';
     if (t.notes) return t.notes;
     if (t.insulin && t.carbs) return 'Meal bolus';
     if (t.insulin) return 'Insulin';
@@ -373,6 +388,11 @@
     return t.eventType || 'Entry';
   }
   function iconFor (t) {
+    if (t.kind !== 'dose') {
+      const ic = el('span', 'ic other', t.kind === 'med' ? (t.medType === 'supplement' ? '🌿' : '💊') : '🩸');
+      ic.setAttribute('aria-hidden', 'true');
+      return ic;
+    }
     const ic = el('span', 'ic ' + (t.insulin && t.carbs ? 'both' : t.insulin ? 'ins' : 'carb'), t.insulin && !t.carbs ? 'u' : t.carbs && !t.insulin ? 'g' : '');
     ic.setAttribute('aria-hidden', 'true');
     return ic;
@@ -512,6 +532,13 @@
         svg.appendChild(sv('text', { class: 'tr-text', x: x(t.t), y: cy }, String(Math.round(t.carbs))));
       }
     }
+    for (const t of treatments) {
+      if (t.kind !== 'med' || t.t < t0 || t.t > now) continue;
+      svg.appendChild(sv('circle', { class: 'tr-med', cx: x(t.t), cy: H - padB - 9, r: 8 }));
+      const tx = sv('text', { class: 'tr-text', x: x(t.t), y: H - padB - 9 }, '💊');
+      tx.setAttribute('font-size', '9');
+      svg.appendChild(tx);
+    }
     chartGeom = { x, y, pts, fc, W, H, padT, padB };
     svg.setAttribute('aria-label', `Glucose chart, last ${rangeH} hours, ${pts.length} readings`);
   }
@@ -601,7 +628,7 @@
     const ul = $('log-list');
     ul.textContent = '';
     const start = new Date(); start.setHours(0, 0, 0, 0);
-    const today = treatments.filter((t) => t.t >= start.getTime() && (t.insulin || t.carbs || t.notes));
+    const today = treatments.filter((t) => t.t >= start.getTime() && (t.insulin || t.carbs || t.notes || t.kind !== 'dose'));
     if (!today.length) { ul.appendChild(el('li', 'empty', 'Nothing logged today yet.')); return; }
     for (const t of today) {
       const li = el('li');
@@ -792,6 +819,7 @@
     if (view === 'log') { if (!$('log-time').value) $('log-time').value = toLocalInput(new Date()); renderLogList(); }
     if (view === 'settings') fillSettingsForm();
     if (view === 'home') renderChart();
+    runHooks('view', view);
     try { history.replaceState(null, '', '#' + view); } catch (e) { /* ignore */ }
     window.scrollTo(0, 0);
   }
@@ -801,6 +829,7 @@
     renderHero(); renderOnBoard(); renderTiles(); renderChart();
     if (!$('view-calc').hidden) renderCalc();
     if (!$('view-log').hidden) renderLogList();
+    runHooks('render');
   }
   async function refresh (force) {
     try {
@@ -836,16 +865,23 @@
       { created_at: new Date(now - 80 * MIN).toISOString(), insulin: 4, carbs: 30, eventType: 'Meal Bolus', notes: 'Chalupa', enteredBy: 'demo' },
       { created_at: new Date(now - 5 * HOUR).toISOString(), insulin: 3, carbs: 25, eventType: 'Meal Bolus', notes: 'Toast + eggs', enteredBy: 'demo' },
       { created_at: new Date(now - 5.2 * HOUR).toISOString(), insulin: 17, eventType: 'Basal', notes: 'Basaglar', enteredBy: 'demo' },
+      { created_at: new Date(now - 4.5 * HOUR).toISOString(), eventType: 'Medication', notes: 'Vitamin D 1000 IU', medName: 'Vitamin D', medDose: '1000 IU', medType: 'supplement', enteredBy: 'demo' },
     ];
+    // periods: about every 29 days, the latest one 18 days ago
+    for (let k = 0; k < 4; k++) {
+      const st = new Date(now - (18 + k * 29) * DAY); st.setHours(12, 0, 0, 0);
+      trs.push({ created_at: st.toISOString(), eventType: 'Period Start', notes: 'Period started', enteredBy: 'demo' });
+      trs.push({ created_at: new Date(st.getTime() + 4 * DAY).toISOString(), eventType: 'Period End', notes: 'Period ended', enteredBy: 'demo' });
+    }
     return { entries: ents, treatments: trs };
   }
 
   // ---------- wire up ----------
   function init () {
     document.querySelectorAll('[data-goto]').forEach((b) => b.addEventListener('click', () => go(b.dataset.goto)));
-    document.querySelectorAll('.seg button').forEach((b) => b.addEventListener('click', () => {
+    document.querySelectorAll('.chart-head .seg button').forEach((b) => b.addEventListener('click', () => {
       rangeH = Number(b.dataset.range);
-      document.querySelectorAll('.seg button').forEach((x) => x.classList.toggle('on', x === b));
+      document.querySelectorAll('.chart-head .seg button').forEach((x) => x.classList.toggle('on', x === b));
       renderChart();
     }));
     const wrap = $('chart-wrap');
@@ -884,6 +920,7 @@
         showMsg('log-msg', '✅ Saved' + (S.demo ? ' (demo only)' : ' to Nightscout') + '.', 'ok');
         $('log-insulin').value = ''; $('log-carbs').value = ''; $('log-note').value = '';
         $('log-time').value = toLocalInput(new Date());
+        runHooks('logSaved');
         await refresh(false);
       } catch (e) {
         showMsg('log-msg', e.message, 'danger');
@@ -910,11 +947,19 @@
     document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(false); });
 
     const start = (location.hash || '').slice(1);
-    const first = !S.url && !S.demo ? 'settings' : (['home', 'calc', 'log', 'settings'].includes(start) ? start : 'home');
+    const first = !S.url && !S.demo ? 'settings' : (['home', 'calc', 'log', 'trends', 'settings'].includes(start) ? start : 'home');
     go(first);
     refresh(true);
     startLoop();
   }
+
+  // internal API for features.js
+  window.CGMHubCore = {
+    get S () { return S; }, get entries () { return entries; }, get treatments () { return treatments; }, get periods () { return periods; },
+    hooks, apiGet, apiPostTreatment, refresh, saveSettings, go, showMsg,
+    $, el, sv, fmtBG, toMg, fromMg, mmol, unitLabel, clockTime, durText, toLocalInput, statusOf, treatmentLabel, iconFor,
+    MIN, HOUR, DAY, MGDL_PER_MMOL,
+  };
 
   // expose pure math for tests
   window.CGMHub = { iobOne, cobOne, bolusCalc: (bg, carbs, ob, settings) => { const keep = S; S = Object.assign({}, DEFAULTS, settings); try { return bolusCalc(bg, carbs, ob); } finally { S = keep; } } };

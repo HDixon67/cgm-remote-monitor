@@ -191,3 +191,40 @@ code { background: var(--card-2); padding: 1px 5px; border-radius: 5px; }
   .tiles { grid-template-columns: repeat(2, 1fr); }
   .hero-value { font-size: 3.2rem; }
 }
+
+/* ---------- v2: log sections, food, meds, period, trends ---------- */
+.logseg { display: flex; width: 100%; margin-bottom: 12px; }
+.logseg button { flex: 1; padding: 10px 4px; font-size: .85rem; }
+.chip { border: 1px solid var(--line); background: var(--card-2); color: var(--text-2); font: inherit; font-size: .8rem; padding: 2px 10px; border-radius: 999px; margin-left: 6px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chips .chip { margin: 0; padding: 8px 12px; font-size: .9rem; color: var(--text); }
+.chips .chip small { color: var(--muted); margin-left: 4px; }
+.search-row { display: flex; gap: 8px; }
+.search-row input { flex: 1; min-width: 0; }
+.btn.slim { width: auto; margin: 0; padding: 0 16px; }
+.food-results, .basket { list-style: none; margin: 8px 0 0; padding: 0; }
+.food-results li, .basket li { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
+.food-results .grow, .basket .grow { flex: 1; min-width: 0; }
+.food-results .title, .basket .title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.food-results button, .basket button.del { flex: none; border: 1px solid var(--line); background: var(--card-2); color: var(--text); font: inherit; border-radius: 10px; padding: 8px 12px; }
+.basket input { width: 76px; padding: 8px; font-size: 1rem; }
+.basket .carbs { width: 56px; text-align: right; font-variant-numeric: tabular-nums; color: var(--text-2); }
+.basket-total { margin-top: 10px; text-align: right; }
+.basket-total b { font-size: 1.3rem; }
+.quick-add, .favs { margin-top: 12px; }
+.med-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.med-btn { border: 1px solid var(--line); background: var(--card-2); color: var(--text); font: inherit; border-radius: 14px; padding: 14px 10px; text-align: left; min-height: 64px; }
+.med-btn small { display: block; color: var(--muted); font-size: .78rem; }
+.med-btn.confirm { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, var(--card-2)); }
+.ob-list .ic.other { background: var(--card-2); border: 1px solid var(--line); font-size: 1rem; }
+.ob-list button.del { border: 1px solid var(--line); background: var(--card-2); color: var(--text-2); border-radius: 10px; padding: 6px 10px; font: inherit; }
+#chart .tr-med { fill: var(--card-2); stroke: var(--axis); stroke-width: 1; }
+.cycle-now { font-size: 1.05rem; margin: 4px 0 8px; }
+.cycle-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.phase-row { padding: 12px 0; border-top: 1px solid var(--line); }
+.phase-row .ph-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.phase-row .ph-name { font-weight: 600; }
+.phase-row .ph-avg { font-variant-numeric: tabular-nums; color: var(--text-2); font-size: .9rem; }
+.phase-row.current .ph-name::after { content: ' · now'; color: var(--accent); font-weight: 600; }
+.insight { padding: 10px 12px; border-radius: 12px; background: var(--card-2); margin: 8px 0; font-size: .95rem; }
+.tabbar button { font-size: .72rem; }
