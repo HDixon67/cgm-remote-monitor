@@ -146,6 +146,13 @@ input, select { width: 100%; font: inherit; font-size: 1.1rem; color: var(--text
 input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
 .grid2 .field { margin: 8px 0; }
+.sched { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.sched h3 { font-size: .95rem; margin: 0 0 6px; }
+.sched-row { display: grid; grid-template-columns: auto 1fr 1fr 44px; gap: 8px; align-items: center; margin: 6px 0; }
+.sched-row .from { font-size: .85rem; color: var(--text-2); }
+.sched-row input { padding: 10px; font-size: 1rem; }
+.sched-row .del { height: 44px; border: 1px solid var(--line); background: var(--card-2); color: var(--text-2); border-radius: 12px; font: inherit; font-size: 1.1rem; }
+.sched-row.now input { border-color: var(--accent); }
 .check { display: flex; gap: 10px; align-items: flex-start; margin: 14px 0; font-size: .92rem; }
 .check input { width: 22px; height: 22px; flex: none; margin: 0; }
 .btn { display: block; width: 100%; margin-top: 12px; padding: 14px; font: inherit; font-weight: 600; border-radius: 14px;

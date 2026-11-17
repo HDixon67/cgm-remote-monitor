@@ -172,11 +172,23 @@
             <select id="set-round"><option value="0.5">0.5 u</option><option value="1">1 u</option><option value="0.1">0.1 u</option></select></label>
           <label class="field"><span>Low line</span><input type="number" step="0.1" id="set-low"></label>
           <label class="field"><span>High line</span><input type="number" step="0.1" id="set-high"></label>
-          <label class="field"><span>Carb ratio (g per 1u)</span><input type="number" step="0.1" id="set-ratio"></label>
-          <label class="field"><span>Sensitivity (per 1u)</span><input type="number" step="0.1" id="set-isf"></label>
-          <label class="field"><span>Target glucose</span><input type="number" step="0.1" id="set-target"></label>
           <label class="field"><span>Insulin duration (h)</span><input type="number" step="0.5" id="set-dia"></label>
           <label class="field"><span>Carb absorption (g/h)</span><input type="number" step="1" id="set-carbshr"></label>
+        </div>
+        <div class="sched" id="sched-ratio" data-kind="ratio">
+          <h3>Carb ratio <span class="muted small">(grams per 1u)</span></h3>
+          <div class="sched-rows"></div>
+          <button class="link" type="button" data-add>+ Add a time</button>
+        </div>
+        <div class="sched" id="sched-isf" data-kind="isf">
+          <h3>Sensitivity <span class="muted small">(<span class="unit-label"></span> per 1u)</span></h3>
+          <div class="sched-rows"></div>
+          <button class="link" type="button" data-add>+ Add a time</button>
+        </div>
+        <div class="sched" id="sched-target" data-kind="target">
+          <h3>Target glucose <span class="muted small">(<span class="unit-label"></span>)</span></h3>
+          <div class="sched-rows"></div>
+          <button class="link" type="button" data-add>+ Add a time</button>
         </div>
         <button class="btn" id="set-from-profile">Fill in from my Nightscout profile</button>
         <label class="check"><input type="checkbox" id="set-confirmed"> I’ve checked these numbers match what my care team gave me.</label>
