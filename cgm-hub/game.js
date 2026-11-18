@@ -26,6 +26,7 @@
   function used (name, k) { return ((G.events[k || todayKey()] || {})[name]) || 0; }
   function totalUsed (name) { return Object.values(G.events).reduce((s, d) => s + (d[name] || 0), 0); }
   bump('open');
+  { const h = new Date().getHours(); if (h >= 6 && h < 9) bump('open_morning'); if (h >= 21) bump('open_night'); }
   // keep the events map small
   Object.keys(G.events).forEach((k) => { if (keyToTime(k) < Date.now() - 60 * DAY) delete G.events[k]; });
 
@@ -68,16 +69,70 @@
     bedcheck: { icon: '🌙', text: 'Check your glucose before bed', manual: true },
     stretch: { icon: '🧘', text: 'Do 5 minutes of stretching', manual: true },
     trends: { icon: '📈', text: 'Peek at your Trends tab', auto: (d, k) => [used('trends', k) ? 1 : 0, 1] },
+    // more everyday quests (check themselves)
+    water2: { icon: '💧', text: 'Log 2 glasses of water', auto: (d) => [d.waters, 2] },
+    exercise: { icon: '🏃', text: 'Log some exercise (any amount!)', auto: (d) => [d.exercise ? 1 : 0, 1] },
+    log4: { icon: '📝', text: 'Log 4 things today (food, doses, meds, water)', auto: (d) => [d.logs, 4] },
+    morning: { icon: '☀️', text: 'Check in between 6 and 9 AM', auto: (d, k) => [used('open_morning', k) ? 1 : 0, 1] },
+    night: { icon: '🌙', text: 'Check in after 9 PM', auto: (d, k) => [used('open_night', k) ? 1 : 0, 1] },
+    streak3h: { icon: '🎯', text: 'Stay in range 3 hours in a row', auto: (d) => [Math.min(3, d.run3h), 3], unit: 'h' },
+    fav: { icon: '⭐', text: 'Log a favourite meal', auto: (d, k) => [used('fav', k) ? 1 : 0, 1] },
+    dinnerEarly: { icon: '🍝', text: 'Log dinner before 8 PM', auto: (d) => [d.dinnerEarly ? 1 : 0, 1] },
+    // more tap-to-finish quests
+    veggies: { icon: '🥦', text: 'Eat veggies or protein first at a meal', manual: true },
+    sunlight: { icon: '🌤️', text: 'Get 5 minutes of fresh air', manual: true },
+    sleep: { icon: '🛌', text: 'Be in bed by 11 PM', manual: true },
+    mealprep: { icon: '🥣', text: 'Plan tomorrow’s breakfast', manual: true },
+    pens: { icon: '🖊️', text: 'Check your pen needles & insulin supply', manual: true },
+    sensor: { icon: '📟', text: 'Check your sensor patch is still stuck on well', manual: true },
+    breathe: { icon: '🌬️', text: 'Take 1 minute of slow breaths', manual: true },
+    kind: { icon: '💖', text: 'Do one nice thing for yourself', manual: true },
+    // quests picked from your insights
+    walk_breakfast: { icon: '🚶', text: 'Walk 10 minutes after breakfast', manual: true, insight: true, logs: { eventType: 'Exercise', duration: 10, notes: 'Walk after breakfast (quest)' } },
+    walk_lunch: { icon: '🚶', text: 'Walk 10 minutes after lunch', manual: true, insight: true, logs: { eventType: 'Exercise', duration: 10, notes: 'Walk after lunch (quest)' } },
+    walk_dinner: { icon: '🚶', text: 'Walk 10 minutes after dinner', manual: true, insight: true, logs: { eventType: 'Exercise', duration: 10, notes: 'Walk after dinner (quest)' } },
+    juicebed: { icon: '🧃', text: 'Put fast sugar next to your bed', manual: true, insight: true },
+    rule1515: { icon: '⏱️', text: 'Treat any low with the 15-15 rule today (or restock glucose tabs)', manual: true, insight: true },
+    snackready: { icon: '🍎', text: 'Keep a snack handy 2–3 hours after meals', manual: true, insight: true },
+    pennear: { icon: '🖊️', text: 'Keep your pen where you eat today', manual: true, insight: true },
+    moveblock: { icon: '💃', text: 'Move for 10 minutes during your toughest time of day', manual: true, insight: true, logs: { eventType: 'Exercise', duration: 10, notes: 'Move 10 min (quest)' } },
+    exsnack: { icon: '🥨', text: 'Have a snack after exercise', manual: true, insight: true },
+    sleepside: { icon: '🛏️', text: 'Sleep on your non-sensor side tonight', manual: true, insight: true },
+    routine: { icon: '🗓️', text: 'Eat at your usual weekday times today', manual: true, insight: true },
   };
+  // which quest helps with which insight
+  const INSIGHT_QUEST = {
+    nightlows: ['juicebed', 'bedcheck'], dawn: ['morning', 'bedcheck'], meallows: ['snackready'], rebound: ['rule1515'],
+    stacked: ['calc'], unlogged: ['log4'], toughhigh: ['moveblock'], lowblock: ['snackbag'], lowtime: ['snackbag', 'rule1515'],
+    variability: ['veggies', 'calc'], foods: ['food', 'veggies'], longhigh: ['water2', 'pens'], nobolus: ['calc', 'pennear'],
+    latebolus: ['pennear'], exerciselow: ['exsnack'], latedinner: ['dinnerEarly'], compression: ['sleepside'], weekend: ['routine'],
+  };
+  let latestInsights = null;
   function hash (s) { let h = 2166136261; for (const c of s) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return h >>> 0; }
   function questsFor (k) {
     if (G.quests[k] && G.quests[k].ids) return G.quests[k].ids;
-    const auto = Object.keys(QUESTS).filter((id) => !QUESTS[id].manual && (!QUESTS[id].needs || QUESTS[id].needs()));
-    const manual = Object.keys(QUESTS).filter((id) => QUESTS[id].manual);
     const seed = hash(k + ':' + (G.rerolls[k] || 0));
     const pick = (arr, n, s) => { const a = arr.slice(); const out = []; while (out.length < n && a.length) { s = Math.imul(s ^ (s >>> 15), 2246822507) >>> 0; out.push(a.splice(s % a.length, 1)[0]); } return out; };
-    const ids = pick(auto, 2, seed).concat(pick(manual, 1, seed ^ 0x9e3779b9));
-    G.quests[k] = { ids, done: (G.quests[k] && G.quests[k].done) || [] };
+    // 1) one quest picked from your insights (biggest issue first; rotates on re-roll)
+    const why = {};
+    const ids = [];
+    const ins = k === todayKey() ? (latestInsights || []).filter((i) => INSIGHT_QUEST[i.id]) : [];
+    if (ins.length) {
+      const i = ins[(G.rerolls[k] || 0) % ins.length];
+      let options = INSIGHT_QUEST[i.id];
+      if (i.id === 'mealspike' && i.slot && QUESTS['walk_' + i.slot]) options = ['walk_' + i.slot, 'veggies'];
+      const id = pick(options, 1, seed)[0];
+      ids.push(id);
+      why[id] = i.icon + ' ' + i.title + (i.block ? ' (' + i.block.replace(/^\S+\s/, '').toLowerCase() + ')' : '');
+    }
+    // 2) fill with everyday quests: auto first, then a tap-to-finish one
+    const ok = (id) => !ids.includes(id) && !QUESTS[id].insight && (!QUESTS[id].needs || QUESTS[id].needs());
+    const auto = Object.keys(QUESTS).filter((id) => !QUESTS[id].manual && ok(id));
+    const manual = Object.keys(QUESTS).filter((id) => QUESTS[id].manual && ok(id));
+    const wantAuto = ids.length && QUESTS[ids[0]].manual ? 2 : 1;
+    ids.push(...pick(auto, Math.min(wantAuto, 3 - ids.length), seed));
+    ids.push(...pick(manual, 3 - ids.length, seed ^ 0x9e3779b9));
+    G.quests[k] = { ids, why, done: (G.quests[k] && G.quests[k].done) || [] };
     save();
     return ids;
   }
@@ -139,7 +194,13 @@
     }
 
     // quests
-    const d = { meals: meals.length, breakfast: meals.some((t) => new Date(t.t).getHours() < 11), doses: doses.length, meds: meds.length > 0, tir };
+    let run3h = 0;
+    { let start = null; for (const p of pts) { if (p.mg >= L && p.mg <= H) { if (start === null) start = p.t; run3h = Math.max(run3h, (p.t - start) / HOUR); } else start = null; } }
+    const d = {
+      meals: meals.length, breakfast: meals.some((t) => new Date(t.t).getHours() < 11), doses: doses.length, meds: meds.length > 0, tir,
+      waters: dayTrs.filter((t) => t.eventType === 'Water').length, exercise: dayTrs.some((t) => t.eventType === 'Exercise'),
+      logs: dayTrs.length, run3h: Math.floor(run3h), dinnerEarly: meals.some((t) => { const h = new Date(t.t).getHours(); return h >= 16 && h < 20; }),
+    };
     const ids = questsFor(k);
     const states = ids.map((id) => questState(id, k, d));
     const nDone = states.filter((s) => s.done).length;
@@ -153,6 +214,12 @@
   // ---------- full game state ----------
   async function compute () {
     const trs = await allTreatments();
+    if (!G.quests[todayKey()] && window.CGMHubInsights && C.entries.length) {
+      try {
+        const res = await Promise.race([window.CGMHubInsights.latest(), new Promise((r) => setTimeout(() => r(null), 4000))]);
+        if (res) latestInsights = res.insights;
+      } catch (e) { /* quests still work without insights */ }
+    }
     const today = todayKey();
     const days = [];
     for (let t = keyToTime(G.start); t <= Date.now(); t += DAY) days.push(dayKey(t + 2 * HOUR));
@@ -269,7 +336,9 @@
       levelUp(L, unlocked);
     }
     const newBadges = BADGES.filter(([id, , , , test]) => !G.badges[id] && test(s));
-    newBadges.forEach(([id, ic, name]) => { G.badges[id] = todayKey(); toast(ic + ' Badge: ' + name); });
+    newBadges.forEach(([id]) => { G.badges[id] = todayKey(); });
+    if (newBadges.length === 1) toast(newBadges[0][1] + ' Badge: ' + newBadges[0][2]);
+    else if (newBadges.length > 1) toast('🏅 ' + newBadges.length + ' new badges! ' + newBadges.map((b) => b[1]).join(''));
     if (newBadges.length && L <= (G.seenLevel || 1)) confetti();
     G.seenXp = s.total; G.seenLevel = L; save();
 
@@ -311,6 +380,8 @@
       row.appendChild(el('span', 'q-ic', q.done ? '✅' : def.icon));
       const mid = el('div', 'grow');
       mid.appendChild(el('div', 'q-text', def.text));
+      const why = ((G.quests[todayKey()] || {}).why || {})[q.id];
+      if (why) mid.appendChild(el('div', 'q-why', '💡 From your insights: ' + why));
       if (!def.manual) {
         const b = el('div', 'bar q'); const f = el('span'); f.style.width = (q.prog / q.goal) * 100 + '%'; b.appendChild(f); mid.appendChild(b);
         mid.appendChild(el('div', 'muted small', q.done ? 'Done! +30 XP' : `${q.prog}${def.unit || ''} / ${q.goal}${def.unit || ''} · checks itself`));
@@ -405,6 +476,7 @@
   $('food-form').addEventListener('submit', () => bump('food'));
   $('scan-form').addEventListener('submit', () => bump('food'));
   $('scan-open').addEventListener('click', () => bump('food'));
+  $('fav-list').addEventListener('click', (e) => { if (e.target.closest('.chip')) bump('fav'); });
 
   let timer = null;
   const soon = () => { clearTimeout(timer); timer = setTimeout(render, 150); };

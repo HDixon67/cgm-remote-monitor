@@ -27,7 +27,7 @@
   let entries = [];      // [{t, mg, dir}] newest first, last 14 days
   let treatments = [];   // [{t, insulin, carbs, eventType, notes, enteredBy, kind}] last 36h, newest first
   let periods = [];      // period start/end events, last ~13 months, newest first
-  const hooks = { render: [], view: [], logSaved: [] };
+  const hooks = { render: [], view: [], logSaved: [], beforeLogSave: [] };
   const runHooks = (name, arg) => hooks[name].forEach((fn) => { try { fn(arg); } catch (e) { console.error(e); } });
   let rangeH = 6;
   let lastLongFetch = 0;
@@ -135,6 +135,8 @@
       enteredBy: t.enteredBy || '',
       kind: t.eventType === 'Medication' ? 'med' : t.eventType === 'Period Start' ? 'period-start' : t.eventType === 'Period End' ? 'period-end' : 'dose',
       medName: t.medName || '', medDose: t.medDose || '', medType: t.medType || '',
+      fat: Number(t.fat) || 0, protein: Number(t.protein) || 0, fiber: Number(t.fiber) || 0, calories: Number(t.calories) || 0,
+      water: Number(t.water) || 0, duration: Number(t.duration) || 0,
     }))
       .filter((t) => !isNaN(t.t))
       .sort((a, b) => b.t - a.t);
@@ -388,6 +390,11 @@
     return t.eventType || 'Entry';
   }
   function iconFor (t) {
+    if (t.eventType === 'Water' || t.eventType === 'Exercise') {
+      const ic = el('span', 'ic other', t.eventType === 'Water' ? '💧' : '🏃');
+      ic.setAttribute('aria-hidden', 'true');
+      return ic;
+    }
     if (t.kind !== 'dose') {
       const ic = el('span', 'ic other', t.kind === 'med' ? (t.medType === 'supplement' ? '🌿' : '💊') : '🩸');
       ic.setAttribute('aria-hidden', 'true');
@@ -428,6 +435,7 @@
   }
 
   function renderTiles () {
+    if (window.CGMHubTiles) return; // tiles.js draws the customizable tiles
     const now = Date.now();
     const s = stats(now - DAY, now);
     const tiles = $('tiles');
@@ -917,6 +925,7 @@
       if (insulin) t.insulin = insulin;
       if (carbs) t.carbs = carbs;
       if (note) t.notes = note;
+      runHooks('beforeLogSave', t);
       $('log-save').disabled = true;
       try {
         await apiPostTreatment(t);
