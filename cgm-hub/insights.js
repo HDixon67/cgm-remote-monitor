@@ -90,7 +90,7 @@
     const since = Date.now() - rangeDays * DAY;
     let ents, trs;
     if (C.S.demo) {
-      ents = C.entries;
+      ents = C.entries.filter((e) => e.t >= since);
       trs = C.normTreatments(demoTreatments(since));
     } else {
       ents = rangeDays <= 14 && C.entries.length ? C.entries.filter((e) => e.t >= since)
@@ -106,9 +106,10 @@
   function analyze (series, trs) {
     const L = lo(), H = hi();
     const out = { insights: [], meals: [], blocks: [], agp: [], days: 0 };
-    if (series.length < 12 * 24) return out; // need about a day of data
+    if (series.length < 12 * 18) return out; // need most of a day of data
     const first = series[0].t, last = series[series.length - 1].t;
     out.days = Math.max(1, Math.round((last - first) / DAY));
+    const need = out.days <= 2 ? 1 : 2; // short ranges: one occurrence is worth mentioning
     const off = Array.isArray(C.S.insOff) ? C.S.insOff : [];
     const add = (id, o) => { if (!off.includes(id)) out.insights.push(Object.assign({ id }, o)); };
 
@@ -137,7 +138,7 @@
     // --- 1. Overnight lows
     const nightLows = realLows.filter((r) => { const h = hourOf(r.start); return h >= 0 && h < 6; });
     const nightsWithLows = new Set(nightLows.map((r) => dayKey(r.start))).size;
-    if (nightsWithLows >= 2) {
+    if (nightsWithLows >= need) {
       add('nightlows', {
         sev: 3, icon: '🌙', title: 'Lows overnight',
         what: `You went low between midnight and 6 AM on ${nightsWithLows} of the last ${out.days} nights (lowest ${C.fmtBG(Math.min(...nightLows.map((r) => r.min)))}).`,
@@ -156,7 +157,7 @@
       rises.push(b - a);
     }
     const medRise = median(rises);
-    if (rises.length >= 4 && medRise >= 30) {
+    if (rises.length >= Math.min(4, out.days) && medRise >= 30) {
       add('dawn', {
         sev: 2, icon: '🌅', title: 'Rising in the early morning',
         what: `On a typical morning you rise about ${mmolDiff(medRise)} between 3 AM and 7:30 AM without eating (${rises.length} mornings checked).`,
@@ -185,7 +186,7 @@
       const pk = median(list.map((m) => m.peakMin));
       const lowRate = list.filter((m) => m.lowAfter).length / list.length;
       out.meals.push({ slot, n: list.length, rise: r, peakMin: pk, lowRate });
-      if (list.length >= 3 && r >= 63) {
+      if (list.length >= Math.min(3, out.days) && r >= 63) {
         const fast = pk <= 75, slow = pk >= 120;
         add('mealspike', {
           slot, sev: 2, icon: '📈', title: `Big rises after ${SLOT[slot].replace(/^\S+\s/, '').toLowerCase()}`,
@@ -208,7 +209,7 @@
           care: true,
         });
       }
-      if (list.length >= 3 && lowRate >= 0.3) {
+      if (list.length >= Math.min(3, out.days) && lowRate >= 0.3) {
         add('meallows', {
           slot, sev: 3, icon: '⬇️', title: `Lows a few hours after ${SLOT[slot].replace(/^\S+\s/, '').toLowerCase()}`,
           what: `${Math.round(lowRate * 100)}% of your ${SLOT[slot].replace(/^\S+\s/, '').toLowerCase()} meals were followed by a low 2–5 hours later.`,
@@ -221,7 +222,7 @@
 
     // --- 4. Rebound highs after lows
     const rebounds = realLows.filter((r) => windowPts(series, r.end, r.end + 2.5 * HOUR).some((p) => p.mg > H));
-    if (rebounds.length >= 2) {
+    if (rebounds.length >= need) {
       add('rebound', {
         sev: 2, icon: '🎢', title: 'Highs after lows (rebounds)',
         what: `${rebounds.length} of your ${realLows.length} lows were followed by a high within 2½ hours.`,
@@ -239,7 +240,7 @@
       if (!prev) continue;
       if (windowPts(series, a.t, a.t + 4 * HOUR).some((p) => p.mg < L)) stacked++;
     }
-    if (stacked >= 2) {
+    if (stacked >= need) {
       add('stacked', {
         sev: 3, icon: '🧱', title: 'Corrections stacking up',
         what: `${stacked} times, a correction was taken within 3 hours of another dose and was followed by a low.`,
@@ -261,7 +262,7 @@
         unexplained++;
         i = lowerBound(series, p.t + 3 * HOUR); // skip ahead so one rise counts once
       }
-      if (unexplained >= 3) {
+      if (unexplained >= need + 1) {
         add('unlogged', {
           sev: 1, icon: '🔍', title: 'Rises with nothing logged',
           what: `${unexplained} times your glucose rose ${mmolDiff(63)} or more with no food or insulin logged around then.`,
@@ -291,7 +292,7 @@
       });
     }
     const worstLow = out.blocks.slice().sort((x, y) => y.pLow - x.pLow)[0];
-    if (worstLow && worstLow.pLow >= 8 && !(worstLow.name.includes('Overnight') && nightsWithLows >= 2)) {
+    if (worstLow && worstLow.pLow >= 8 && !(worstLow.name.includes('Overnight') && nightsWithLows >= need)) {
       add('lowblock', {
         sev: 3, icon: '⚠️', title: `Lows cluster in the ${worstLow.name.replace(/^\S+\s/, '').toLowerCase()}`,
         what: `${Math.round(worstLow.pLow)}% of readings in the ${worstLow.name.replace(/^\S+\s/, '').toLowerCase()} are low (the goal is under 4% overall).`,
@@ -406,7 +407,7 @@
       const back = windowPts(series, bottom.t, bottom.t + 40 * MIN).some((x) => x.mg >= bottom.mg + drop * 0.8);
       if (back && !trs.some((t) => t.carbs > 0 && t.t >= bottom.t - 10 * MIN && t.t <= bottom.t + 40 * MIN)) { comp++; i = lowerBound(series, p.t + 2 * HOUR); }
     }
-    if (comp >= 2) {
+    if (comp >= need) {
       add('compression', {
         sev: 1, icon: '🛏️', title: 'Possible “compression lows” at night',
         what: `${comp} times overnight your glucose dropped fast and bounced right back with no food logged. That pattern often means you were lying on your sensor.`,
@@ -423,7 +424,7 @@
     }
     if (hrun) longHighs.push(hrun);
     const lh = longHighs.filter((r) => r.end - r.start >= 4 * HOUR);
-    if (lh.length >= 2) {
+    if (lh.length >= need) {
       add('longhigh', {
         sev: 2, icon: '⏳', title: 'Long stretches of highs',
         what: `${lh.length} times you stayed above range for 4+ hours (longest ${minsText(Math.max(...lh.map((r) => (r.end - r.start) / MIN)))}).`,
@@ -442,7 +443,7 @@
         if (!ins.length) noBolus++;
         else if (ins.every((t) => t.t - m.t >= 20 * MIN)) late++;
       }
-      if (noBolus >= 2) {
+      if (noBolus >= need) {
         add('nobolus', {
           sev: 2, icon: '❓', title: 'Meals without a logged bolus',
           what: `${noBolus} meals had carbs logged but no insulin logged around them.`,
@@ -450,7 +451,7 @@
           tries: ['Use the Bolus tab → “Log this dose + carbs” to log both at once', 'Set a phone reminder for meal times', 'Keep your pen next to where you eat'],
         });
       }
-      if (late >= 2) {
+      if (late >= need) {
         add('latebolus', {
           sev: 1, icon: '⏰', title: 'Boluses after eating',
           what: `${late} times your insulin was logged 20+ minutes after the meal.`,
@@ -462,9 +463,9 @@
 
     // --- 16. Lows after exercise
     const exTrs = trs.filter((t) => t.eventType === 'Exercise');
-    if (exTrs.length >= 2) {
+    if (exTrs.length >= need) {
       const withLow = exTrs.filter((t) => windowPts(series, t.t, t.t + 12 * HOUR).some((p) => p.mg < L));
-      if (withLow.length >= 2 && withLow.length / exTrs.length >= 0.4) {
+      if (withLow.length >= need && withLow.length / exTrs.length >= 0.4) {
         add('exerciselow', {
           sev: 2, icon: '🏃', title: 'Lows after exercise',
           what: `${withLow.length} of your ${exTrs.length} logged workouts were followed by a low within 12 hours.`,

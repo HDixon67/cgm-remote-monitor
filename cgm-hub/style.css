@@ -330,3 +330,7 @@ svg.spark .spark-line { fill: none; stroke: var(--accent); stroke-width: 2; stro
 .cat-has { color: var(--in); font-size: .8rem; font-weight: 600; }
 .checks .check { margin: 8px 0; }
 .q-why { font-size: .78rem; color: var(--accent); margin-top: 2px; }
+.rem-row { display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--line); padding: 4px 0; }
+.rem-row .check { flex: 1; margin: 8px 0; }
+.rem-row input[type=time] { width: auto; padding: 8px; font-size: .95rem; }
+.rem-row .del { border: 1px solid var(--line); background: var(--card-2); color: var(--text-2); border-radius: 10px; padding: 6px 10px; font: inherit; }
