@@ -53,6 +53,10 @@ The token needs a role with `api:entries:create` during the import. Readings Nig
 `.github/workflows/cgm-hub-pages.yml` publishes this folder to GitHub Pages on every push to `master`.
 One-time: repo **Settings → Pages → Source: GitHub Actions**.
 
+## Forecast
+
+When your carb ratio and sensitivity are set, the 60-minute forecast combines the last 15 minutes of trend with insulin still working (Nightscout's IOB curve × sensitivity) and carbs still digesting (linear absorption × sensitivity ÷ carb ratio). The part of the trend that insulin/carbs don't explain fades out over 30 minutes. Without those numbers it falls back to Nightscout's 30-minute AR2 trend forecast. It only knows about insulin and carbs logged in CGM Hub (or anything else that writes to Nightscout).
+
 ## Notes
 
 - Meds are saved as `Medication` treatments (with `medName`, `medDose`, `medType`); periods as `Period Start` / `Period End`. They live in your Nightscout, which needs a login to read.
@@ -60,5 +64,5 @@ One-time: repo **Settings → Pages → Source: GitHub Actions**.
 - Food search sends only your search words to Open Food Facts.
 
 - Insulin/carbs-on-board use the same curves as Nightscout (`lib/plugins/iob.js`, simple linear carb absorption with a 20-minute delay).
-- Basal doses (event type or note containing basal/Basaglar/Lantus/etc.) are left out of insulin on board.
+- Long-acting doses are logged as `Basal Injection` (Log → Food → 💉 Long-acting insulin). Basal doses (event type or note containing basal/Basaglar/Lantus/etc.) are left out of insulin on board.
 - If another app also uploads the same doses to Nightscout, they'll be counted twice. Log each dose in one place.

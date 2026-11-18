@@ -249,6 +249,28 @@
       await C.refresh(false);
     } catch (e) { C.showMsg(msgEl, e.message, 'danger'); }
   }
+  // long-acting (basal) insulin: kept out of insulin-on-board, counted in the insulin tiles
+  function fillBasal () {
+    $('basal-name').value = C.S.basalName || '';
+    if (!$('basal-units').value && C.S.basalUnits) $('basal-units').value = C.S.basalUnits;
+    $('basal-time').value = nowLocalInput();
+  }
+  $('basal-save').addEventListener('click', async () => {
+    const units = Number($('basal-units').value);
+    if (!(units > 0)) { $('basal-units').focus(); return; }
+    if (units > 100) { C.showMsg('basal-msg', 'That’s over 100 units. Please double-check.', 'warn'); return; }
+    const name = $('basal-name').value.trim() || 'Long-acting insulin';
+    const when = $('basal-time').value ? new Date($('basal-time').value) : new Date();
+    C.S.basalName = name; C.S.basalUnits = units; C.saveSettings();
+    try {
+      await C.apiPostTreatment({ eventType: 'Basal Injection', insulin: units, insulinType: name, notes: name + ' ' + units + 'u', created_at: when.toISOString(), enteredBy: 'CGM Hub' });
+      C.showMsg('basal-msg', '✅ ' + name + ' ' + units + 'u logged' + (C.S.demo ? ' (demo only)' : '') + '.', 'ok');
+      fillBasal();
+      await C.refresh(false);
+    } catch (e) { C.showMsg('basal-msg', e.message, 'danger'); }
+  });
+  C.hooks.view.push((v) => { if (v === 'log') fillBasal(); });
+
   document.querySelectorAll('[data-water]').forEach((b) => b.addEventListener('click', () => {
     const ml = Number(b.dataset.water);
     quickLog({ eventType: 'Water', water: ml, notes: ml + ' ml water' }, 'wx-msg', ml + ' ml water logged 💧');

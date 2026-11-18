@@ -224,7 +224,46 @@
   }
 
   // ---------- math: AR2 forecast (Nightscout's 30-minute forecast) ----------
+  // Forecast: insulin + carbs + trend when your numbers are set, otherwise Nightscout's AR2 trend.
+  let forecastKind = 'trend';
   function forecast () {
+    const smart = smartForecast();
+    if (smart) { forecastKind = 'smart'; return smart; }
+    forecastKind = 'trend';
+    return ar2Forecast();
+  }
+  function smartForecast (now0) {
+    const cur = entries[0];
+    if (!cur || (now0 || Date.now()) - cur.t > STALE_MIN * MIN) return null;
+    const R = valueNow('ratio'), I = valueNow('isf');
+    if (!R || !I || !(R.v > 0) || !(I.v > 0)) return null;
+    const isfMg = toMg(I.v);            // glucose drop per unit, in mg/dL
+    const csf = isfMg / R.v;            // glucose rise per gram of carbs
+    const dia = Number(S.dia) || 4, carbsHr = Number(S.carbsHr) || 30;
+    const now = cur.t;
+    const trs = treatments.filter((t) => now - t.t < 24 * HOUR);
+    // insulin that has already acted, and carbs already absorbed, by time now+dt
+    const usedIns = (dt) => trs.reduce((s2, t) => (t.insulin > 0 && !isBasal(t) && t.t <= now + dt ? s2 + t.insulin - iobOne(t.insulin, (now + dt - t.t) / MIN, dia) : s2), 0);
+    const absorbed = (dt) => trs.reduce((s2, t) => (t.carbs > 0 && t.t <= now + dt ? s2 + t.carbs - cobOne(t.carbs, (now + dt - t.t) / MIN, carbsHr) : s2), 0);
+    const effect = (a, b) => -isfMg * (usedIns(b) - usedIns(a)) + csf * (absorbed(b) - absorbed(a));
+    // what glucose actually did over the last ~15 minutes (per 5 minutes)
+    const past = entries.find((e) => cur.t - e.t >= 14 * MIN);
+    let delta5 = past && cur.t - past.t <= 22 * MIN ? ((cur.mg - past.mg) * 5) / ((cur.t - past.t) / MIN) : deltaMg();
+    if (delta5 == null) return null;
+    // the part of the trend insulin/carbs don't explain fades out over 30 minutes
+    const span = past ? cur.t - past.t : 5 * MIN;
+    const dev = delta5 - (effect(-span, 0) * 5 * MIN) / span;
+    const pts = [];
+    let bg = cur.mg;
+    for (let k = 1; k <= 12; k++) {
+      const a = (k - 1) * 5 * MIN, b = k * 5 * MIN;
+      bg += effect(a, b) + dev * Math.max(0, 1 - (k - 1) / 6);
+      bg = Math.min(400, Math.max(39, bg));
+      pts.push({ t: now + b, mg: bg });
+    }
+    return pts;
+  }
+  function ar2Forecast () {
     const cur = entries[0];
     if (!cur || Date.now() - cur.t > STALE_MIN * MIN) return [];
     // find a reading ~5 minutes earlier
@@ -366,7 +405,7 @@
       const hit = fc.find((p) => p.mg < lo);
       if (hit) {
         banner.hidden = false; banner.className = 'alert-banner';
-        banner.textContent = '↘ Could go low in ~' + Math.round((hit.t - Date.now()) / MIN) + ' min (forecast, an estimate)';
+        banner.textContent = '↘ Could go low in ~' + Math.max(1, Math.round((hit.t - Date.now()) / MIN)) + ' min' + (forecastKind === 'smart' ? ' (forecast with insulin & carbs)' : ' (trend forecast)');
         return;
       }
     }
@@ -374,7 +413,7 @@
       const hit = fc.find((p) => p.mg > hi);
       if (hit) {
         banner.hidden = false; banner.className = 'alert-banner high';
-        banner.textContent = '↗ Could go high in ~' + Math.round((hit.t - Date.now()) / MIN) + ' min (forecast, an estimate)';
+        banner.textContent = '↗ Could go high in ~' + Math.max(1, Math.round((hit.t - Date.now()) / MIN)) + ' min' + (forecastKind === 'smart' ? ' (forecast with insulin & carbs)' : ' (trend forecast)');
       }
     }
   }
@@ -488,9 +527,10 @@
     svg.textContent = '';
     const padL = 6, padR = 34, padT = 22, padB = 22;
     const now = Date.now();
-    const t0 = now - rangeH * HOUR, t1 = now + 30 * MIN;
+    const fcPts = forecast();
+    const t0 = now - rangeH * HOUR, t1 = now + (forecastKind === 'smart' ? 60 : 30) * MIN;
     const pts = entries.filter((e) => e.t >= t0).slice().reverse();
-    const fc = forecast();
+    const fc = fcPts;
     const maxMg = Math.max(toMg(mmol() ? 15 : 270), ...pts.map((p) => p.mg), ...fc.map((p) => p.mg)) + 10;
     const minMg = mmol() ? 2 * MGDL_PER_MMOL : 40;
     const x = (t) => padL + ((t - t0) / (t1 - t0)) * (W - padL - padR);
@@ -568,7 +608,7 @@
     tip.textContent = '';
     tip.appendChild(el('b', null, fmtBG(best.mg) + ' '));
     tip.appendChild(document.createTextNode(unitLabel()));
-    tip.appendChild(el('div', 'muted', clockTime(best.t) + (best.fc ? ' · forecast' : '')));
+    tip.appendChild(el('div', 'muted', clockTime(best.t) + (best.fc ? (forecastKind === 'smart' ? ' · forecast (insulin, carbs, trend)' : ' · trend forecast') : '')));
     tip.hidden = false;
     const left = (cx / chartGeom.W) * rect.width;
     tip.style.left = Math.max(0, Math.min(rect.width - tip.offsetWidth, left - tip.offsetWidth / 2)) + 'px';
@@ -974,7 +1014,7 @@
   };
 
   // expose pure math for tests
-  window.CGMHub = { iobOne, cobOne, bolusCalc: (bg, carbs, ob, settings) => { const keep = S; S = Object.assign({}, DEFAULTS, settings); try { return bolusCalc(bg, carbs, ob); } finally { S = keep; } } };
+  window.CGMHub = { iobOne, cobOne, smartForecast, ar2Forecast, get forecastKind () { return forecastKind; }, bolusCalc: (bg, carbs, ob, settings) => { const keep = S; S = Object.assign({}, DEFAULTS, settings); try { return bolusCalc(bg, carbs, ob); } finally { S = keep; } } };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 })();
