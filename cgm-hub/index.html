@@ -27,6 +27,8 @@
         <button class="alert-banner" id="forecast-banner" hidden></button>
       </header>
 
+      <button class="card pet-card" id="pet-card" type="button" hidden aria-label="Open your pet and quests"></button>
+
       <div class="card chart-card">
         <div class="chart-head">
           <h2>Glucose</h2>
@@ -220,6 +222,50 @@
       </div>
     </section>
 
+    <!-- ============ GAME ============ -->
+    <section class="view" id="view-game" data-view="game" hidden>
+      <div class="card game-pet">
+        <div class="card-head"><button class="link" data-goto="home" type="button">‹ Home</button><button class="link" id="pet-edit" type="button">✏️ Pet</button></div>
+        <div id="game-pet"></div>
+        <div id="pet-pick" hidden>
+          <h2>Choose your buddy</h2>
+          <div class="wardrobe" id="species"></div>
+          <label class="field"><span>Name</span><input type="text" id="pet-name-in" maxlength="20" placeholder="e.g. Biscuit"></label>
+          <button class="btn primary" id="pet-save" type="button">Save</button>
+        </div>
+      </div>
+      <div class="cycle-stats" id="game-streak"></div>
+      <div class="card">
+        <div class="card-head"><h2>⚔️ Today’s quests</h2><button class="link" id="quest-reroll" type="button">🎲 New quests</button></div>
+        <div id="quest-list"></div>
+        <p class="muted small">+30 XP each, +30 bonus for all three. New quests every day. You can swap them once a day (before finishing any).</p>
+      </div>
+      <div class="card">
+        <h2>✨ Today’s XP</h2>
+        <ul class="ob-list" id="xp-list"></ul>
+        <details class="help">
+          <summary>How do I earn XP?</summary>
+          <ul class="small">
+            <li>🍽️ Log a meal: +10 (up to 5 a day) · 💉 a dose: +5 · 💊 a med: +5 · 🩸 a period day: +15</li>
+            <li>⏱️ Each hour mostly in range: +2 · 🌤️ Good day (70%+): +25 · 🌟 Great day (85%+): +25 more</li>
+            <li>😴 In range all night: +20</li>
+            <li>🦸 Low back up within 30 min: +20 · 🧘 no rebound high after: +15</li>
+            <li>👋 Daily check-in: +5 · ⚔️ quests: +30 each</li>
+            <li>XP never goes down. Highs and lows never cost you anything.</li>
+            <li>🔥 Streak = days you logged something. Every 7 days earns a ❄️ freeze that covers a missed day.</li>
+          </ul>
+        </details>
+      </div>
+      <div class="card">
+        <h2>👗 Wardrobe</h2>
+        <div class="wardrobe" id="wardrobe"></div>
+      </div>
+      <div class="card">
+        <h2>🏅 Badges</h2>
+        <div class="badges" id="badges"></div>
+      </div>
+    </section>
+
     <!-- ============ TRENDS ============ -->
     <section class="view" id="view-trends" data-view="trends" hidden>
       <div class="seg logseg" id="trend-range" role="tablist" aria-label="Time range">
@@ -355,6 +401,10 @@
         </div>
         <div class="notice" id="imp-msg" hidden></div>
       </div>
+      <div class="card">
+        <h2>🎮 Game</h2>
+        <label class="check"><input type="checkbox" id="game-toggle"> Show my pet, XP and quests</label>
+      </div>
       <p class="foot muted small">CGM Hub is a personal tool, not a medical device. Always double-check doses. Keep your Libre app alarms on.</p>
     </section>
   </main>
@@ -379,9 +429,20 @@
     </div>
   </div>
 
+  <div class="modal center" id="levelup" hidden role="dialog" aria-modal="true" aria-labelledby="lu-title">
+    <div class="modal-card levelup">
+      <div id="lu-pet"></div>
+      <h2 id="lu-title">Level up!</h2>
+      <p id="lu-text"></p>
+      <button class="btn primary" id="lu-close" type="button">Yay! 🎉</button>
+    </div>
+  </div>
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
   <script src="app.js"></script>
   <script src="features.js"></script>
   <script src="insights.js"></script>
   <script src="importer.js"></script>
+  <script src="game.js"></script>
 </body>
 </html>
