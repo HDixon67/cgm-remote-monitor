@@ -56,8 +56,9 @@ async function main () {
   // 💊 meds not logged yet today
   for (const m of cfg.meds || []) {
     if (!m.on || !m.name) continue;
-    const taken = today.some((t) => t.eventType === 'Medication' && String(t.medName || t.notes || '').toLowerCase().startsWith(m.name.toLowerCase()));
-    if (taken) continue;
+    // n = which dose of the day this is (0 = first). Taken if that many doses are already logged today.
+    const count = today.filter((t) => t.eventType === 'Medication' && String(t.medName || t.notes || '').toLowerCase().startsWith(m.name.toLowerCase())).length;
+    if (count > (m.n || 0)) continue;
     if (due(m.time)) out.push(['💊 ' + m.name, `Time for ${m.name}${m.dose ? ' (' + m.dose + ')' : ''}. Tap it in CGM Hub → Log → Meds when done.`]);
     else if (m.nag && due(m.time, 60)) out.push(['💊 ' + m.name + ' (reminder #2)', `Still not logged: ${m.name}. Taken it already? Log it so I stop asking 🙂`]);
   }

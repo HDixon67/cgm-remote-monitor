@@ -334,3 +334,48 @@ svg.spark .spark-line { fill: none; stroke: var(--accent); stroke-width: 2; stro
 .rem-row .check { flex: 1; margin: 8px 0; }
 .rem-row input[type=time] { width: auto; padding: 8px; font-size: .95rem; }
 .rem-row .del { border: 1px solid var(--line); background: var(--card-2); color: var(--text-2); border-radius: 10px; padding: 6px 10px; font: inherit; }
+
+/* ---------- New log hub + sheets + med schedule ---------- */
+:root { --pink: #e0679a; --orange: #f08a4b; }
+.page-title { font-size: 1.5rem; margin: 4px 0 12px; text-align: center; }
+.log-hub { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+.hub-tile { display: flex; align-items: center; gap: 12px; min-height: 76px; padding: 14px; border-radius: 20px; border: 1px solid var(--line);
+  background: var(--card); color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.hub-tile.wide { grid-column: 1 / -1; }
+.hub-ic { font-size: 1.6rem; flex: none; }
+.hub-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.hub-txt b { font-size: 1.05rem; }
+.hub-txt small { color: var(--text-2); font-size: .82rem; overflow: hidden; text-overflow: ellipsis; }
+.hub-add { font-weight: 700; flex: none; }
+.t-food { background: color-mix(in srgb, var(--carb) 16%, var(--card)); } .t-food .hub-add { color: var(--carb); }
+.t-ins, .t-basal { background: color-mix(in srgb, var(--ins) 14%, var(--card)); } .t-ins small, .t-basal small { color: var(--ins); }
+.t-meds { background: color-mix(in srgb, var(--in) 12%, var(--card)); } .t-meds .hub-add { color: var(--in); }
+.t-act { background: color-mix(in srgb, var(--orange) 14%, var(--card)); } .t-act small { color: var(--orange); }
+.t-water { background: color-mix(in srgb, var(--ins) 8%, var(--card)); }
+.t-period { background: color-mix(in srgb, var(--pink) 14%, var(--card)); } .t-period .hub-add { color: var(--pink); }
+.sheet-modal { align-items: flex-end; padding: 0; z-index: 15; }
+.sheet-card { max-height: 92vh; overflow-y: auto; border-radius: 22px 22px 0 0; margin: 0; padding: 12px 16px calc(24px + env(safe-area-inset-bottom)); animation: up .22s ease-out; }
+@keyframes up { from { transform: translateY(30px); opacity: .6; } }
+@media (prefers-reduced-motion: reduce) { .sheet-card { animation: none; } }
+.sheet-head { position: sticky; top: -12px; display: flex; justify-content: space-between; align-items: center; background: var(--card); padding: 8px 0; z-index: 1; }
+.sheet-head h2 { margin: 0; font-size: 1.2rem; }
+body.sheet-open { overflow: hidden; }
+.sub-card { background: var(--card-2); border-radius: 16px; padding: 12px; margin-top: 12px; }
+.sub-card h3 { margin: 0 0 6px; font-size: .95rem; }
+.slot-head { display: flex; justify-content: space-between; align-items: center; margin: 18px 0 6px; }
+.slot-name { letter-spacing: .12em; font-weight: 700; color: var(--text-2); font-size: .85rem; }
+.slot-head .chip { margin: 0; padding: 6px 14px; }
+.med-row { display: flex; align-items: center; gap: 12px; padding: 12px; margin: 8px 0; border-radius: 18px; background: var(--card-2); }
+.med-row.done .title { color: var(--text-2); }
+.med-ic { width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center; font-size: 1.4rem; flex: none; }
+.med-ic.med { background: color-mix(in srgb, var(--carb) 22%, var(--card)); }
+.med-ic.supp { background: color-mix(in srgb, var(--in) 20%, var(--card)); }
+.med-row .overdue { color: var(--high); }
+.med-check { width: 34px; height: 34px; border-radius: 50%; border: 2px solid var(--text-2); background: transparent; color: #fff; font: inherit; font-weight: 700; flex: none; }
+.med-check.on { background: var(--in); border-color: var(--in); }
+.time-row { display: flex; gap: 8px; margin: 6px 0; }
+.time-row input { flex: 1; }
+.time-row .del { border: 1px solid var(--line); background: var(--card-2); color: var(--text-2); border-radius: 10px; padding: 6px 12px; font: inherit; }
+#med-list .del { margin-left: 4px; }
+.med-row .grow { flex: 1; min-width: 0; }
+.med-row .title { font-weight: 600; font-size: 1.05rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
