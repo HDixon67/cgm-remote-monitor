@@ -950,7 +950,7 @@
     document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(false); });
 
     const start = (location.hash || '').slice(1);
-    const first = !S.url && !S.demo ? 'settings' : (['home', 'calc', 'log', 'trends', 'settings'].includes(start) ? start : 'home');
+    const first = !S.url && !S.demo ? 'settings' : (['home', 'calc', 'log', 'trends', 'settings', 'game'].includes(start) ? start : 'home');
     go(first);
     refresh(true);
     startLoop();
