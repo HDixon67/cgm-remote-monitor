@@ -25,9 +25,16 @@ It runs only in your browser. Your data stays in Nightscout; your token and sett
 2. Open CGM Hub → **Settings** → paste your Nightscout URL and token → fill in your numbers → tick the box → **Save**.
 3. Phone: open the browser menu → **Add to Home screen**.
 
+## Stat tiles
+
+Home → Stats → ✏️ **Edit tiles**: add from ~35 tiles (in/above/below range, range split, average, bedtime & wake-up averages, median, highs/lows, Flux grade, mini graph, in-range streak, unicorns 🦄, time low/high, GMI, insulin/bolus/basal per day and totals, carbs, calories, protein, fat, fiber, water, exercise, CV, SD, quartiles). Each tile has its own period (today, 24 h, 3/7/14 days); reorder with ▲▼.
+Calories/macros come from food search & barcode scans. Water and exercise are logged in Log → Food.
+
+Settings → **💡 Insights & trends** lets you switch each insight type and Trends section on or off.
+
 ## Game 🎮
 
-Tap the pet card on Home. Pick a buddy, earn XP for logging, in-range hours, good days, handling lows well and 3 daily quests. Level up to grow your pet and unlock wardrobe items; collect badges.
+Tap the pet card on Home. Pick a buddy, earn XP for logging, in-range hours, good days, handling lows well and 3 daily quests (one is picked from your insights, e.g. a walk after the meal that spikes you most). Level up to grow your pet and unlock wardrobe items; collect badges.
 XP never goes down, highs/lows never cost anything, and streaks have ❄️ freezes (one per 7 days). XP is worked out from your Nightscout data; pet, badges and manual quest check-offs live on the phone (`cgmhub.game.v1`). Turn it off in Settings.
 
 ## Import Libre history

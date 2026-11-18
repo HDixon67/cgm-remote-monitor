@@ -311,3 +311,22 @@ svg.agp { width: 100%; height: 220px; display: block; }
 .confetti { position: fixed; inset: 0; pointer-events: none; z-index: 30; overflow: hidden; }
 .confetti span { position: absolute; top: -40px; font-size: 1.6rem; animation: fall 2.2s ease-in forwards; }
 @keyframes fall { to { transform: translateY(110vh) rotate(540deg); } }
+
+/* ---------- tiles editor, catalog, insight quests ---------- */
+.tile .t-per { color: var(--muted); font-size: .68rem; }
+.tile.wide { grid-column: 1 / -1; min-height: 0; gap: 6px; }
+.quart { display: flex; justify-content: space-around; text-align: center; }
+svg.spark { width: 100%; height: 56px; display: block; }
+svg.spark .band { fill: var(--band); }
+svg.spark .spark-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
+.tile-edit-list { list-style: none; padding: 0; margin: 8px 0; }
+.tile-edit-list li { display: flex; align-items: center; gap: 6px; padding: 8px 0; border-top: 1px solid var(--line); }
+.tile-edit-list .title { font-weight: 600; font-size: .9rem; min-width: 0; }
+.tile-edit-list select { width: auto; padding: 6px; font-size: .85rem; }
+.tile-edit-list .del { border: 1px solid var(--line); background: var(--card-2); color: var(--text-2); border-radius: 10px; padding: 6px 9px; font: inherit; }
+.tile-edit-list .del:disabled { opacity: .35; }
+.cat-h { font-size: .95rem; margin: 16px 0 6px; }
+.cat-item { display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left; border: 1px solid var(--line); background: var(--card-2); color: var(--text); font: inherit; border-radius: 14px; padding: 12px; margin: 6px 0; }
+.cat-has { color: var(--in); font-size: .8rem; font-weight: 600; }
+.checks .check { margin: 8px 0; }
+.q-why { font-size: .78rem; color: var(--accent); margin-top: 2px; }

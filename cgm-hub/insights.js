@@ -109,7 +109,8 @@
     if (series.length < 12 * 24) return out; // need about a day of data
     const first = series[0].t, last = series[series.length - 1].t;
     out.days = Math.max(1, Math.round((last - first) / DAY));
-    const add = (o) => out.insights.push(o);
+    const off = Array.isArray(C.S.insOff) ? C.S.insOff : [];
+    const add = (id, o) => { if (!off.includes(id)) out.insights.push(Object.assign({ id }, o)); };
 
     // basic stats
     let n = 0, sum = 0, sum2 = 0, nLow = 0, nHigh = 0, nVLow = 0;
@@ -137,7 +138,7 @@
     const nightLows = realLows.filter((r) => { const h = hourOf(r.start); return h >= 0 && h < 6; });
     const nightsWithLows = new Set(nightLows.map((r) => dayKey(r.start))).size;
     if (nightsWithLows >= 2) {
-      add({
+      add('nightlows', {
         sev: 3, icon: '🌙', title: 'Lows overnight',
         what: `You went low between midnight and 6 AM on ${nightsWithLows} of the last ${out.days} nights (lowest ${C.fmtBG(Math.min(...nightLows.map((r) => r.min)))}).`,
         causes: ['Long-acting (basal) insulin may be a bit strong for overnight', 'A correction dose late in the evening still working while you sleep', 'Exercise earlier in the day (it can lower glucose for up to 24 h)', 'Alcohol in the evening', 'A dinner bolus that was bigger than the meal needed'],
@@ -156,7 +157,7 @@
     }
     const medRise = median(rises);
     if (rises.length >= 4 && medRise >= 30) {
-      add({
+      add('dawn', {
         sev: 2, icon: '🌅', title: 'Rising in the early morning',
         what: `On a typical morning you rise about ${mmolDiff(medRise)} between 3 AM and 7:30 AM without eating (${rises.length} mornings checked).`,
         causes: ['The “dawn phenomenon”: hormones released before waking raise glucose', 'Basal insulin wearing off by morning', 'A late or high-fat dinner digesting slowly overnight', 'Rebound after an unnoticed overnight low (less common)'],
@@ -186,8 +187,8 @@
       out.meals.push({ slot, n: list.length, rise: r, peakMin: pk, lowRate });
       if (list.length >= 3 && r >= 63) {
         const fast = pk <= 75, slow = pk >= 120;
-        add({
-          sev: 2, icon: '📈', title: `Big rises after ${SLOT[slot].replace(/^\S+\s/, '').toLowerCase()}`,
+        add('mealspike', {
+          slot, sev: 2, icon: '📈', title: `Big rises after ${SLOT[slot].replace(/^\S+\s/, '').toLowerCase()}`,
           what: `After ${SLOT[slot].replace(/^\S+\s/, '').toLowerCase()} you typically rise ${mmolDiff(r)}, peaking about ${minsText(pk)} after eating (${list.length} meals).`,
           causes: [
             fast ? 'The peak comes fast, which often means insulin started working after the food did' : null,
@@ -208,8 +209,8 @@
         });
       }
       if (list.length >= 3 && lowRate >= 0.3) {
-        add({
-          sev: 3, icon: '⬇️', title: `Lows a few hours after ${SLOT[slot].replace(/^\S+\s/, '').toLowerCase()}`,
+        add('meallows', {
+          slot, sev: 3, icon: '⬇️', title: `Lows a few hours after ${SLOT[slot].replace(/^\S+\s/, '').toLowerCase()}`,
           what: `${Math.round(lowRate * 100)}% of your ${SLOT[slot].replace(/^\S+\s/, '').toLowerCase()} meals were followed by a low 2–5 hours later.`,
           causes: ['The meal dose may be more than this meal needs', 'Carbs over-counted, or part of the meal not eaten', 'Activity after the meal', 'A correction added on top of the meal dose'],
           tries: ['Note what you ate on the days it happened (the Food section helps)', 'Have a small snack ready 2–3 hours after this meal', 'Ask your care team whether your carb ratio at this time is too strong'],
@@ -221,7 +222,7 @@
     // --- 4. Rebound highs after lows
     const rebounds = realLows.filter((r) => windowPts(series, r.end, r.end + 2.5 * HOUR).some((p) => p.mg > H));
     if (rebounds.length >= 2) {
-      add({
+      add('rebound', {
         sev: 2, icon: '🎢', title: 'Highs after lows (rebounds)',
         what: `${rebounds.length} of your ${realLows.length} lows were followed by a high within 2½ hours.`,
         causes: ['Eating more than needed while low, which is very common because lows make you hungry', 'Slow sugar (chocolate, cookies) that keeps raising glucose after the low is gone', 'The body’s own stress hormones releasing sugar during a low'],
@@ -239,7 +240,7 @@
       if (windowPts(series, a.t, a.t + 4 * HOUR).some((p) => p.mg < L)) stacked++;
     }
     if (stacked >= 2) {
-      add({
+      add('stacked', {
         sev: 3, icon: '🧱', title: 'Corrections stacking up',
         what: `${stacked} times, a correction was taken within 3 hours of another dose and was followed by a low.`,
         causes: ['Insulin from the earlier dose was still working (insulin on board)', 'Correcting again because glucose wasn’t dropping fast enough yet'],
@@ -261,7 +262,7 @@
         i = lowerBound(series, p.t + 3 * HOUR); // skip ahead so one rise counts once
       }
       if (unexplained >= 3) {
-        add({
+        add('unlogged', {
           sev: 1, icon: '🔍', title: 'Rises with nothing logged',
           what: `${unexplained} times your glucose rose ${mmolDiff(63)} or more with no food or insulin logged around then.`,
           causes: ['Snacks or drinks that weren’t logged', 'A missed or late bolus', 'Stress, illness, or a hot shower/bath', 'Your infusion site or insulin pen issue (if insulin seemed to “not work”)', 'Your period cycle (see the cycle section below)'],
@@ -281,8 +282,8 @@
     }
     const worstHigh = out.blocks.slice().sort((x, y) => y.pHigh - x.pHigh)[0];
     if (worstHigh && worstHigh.pHigh >= 35 && worstHigh.pHigh >= tar * 1.4) {
-      add({
-        sev: 1, icon: '⏰', title: `Your toughest time: ${worstHigh.name.replace(/^\S+\s/, '').toLowerCase()}`,
+      add('toughhigh', {
+        block: worstHigh.name, sev: 1, icon: '⏰', title: `Your toughest time: ${worstHigh.name.replace(/^\S+\s/, '').toLowerCase()}`,
         what: `You’re above range ${Math.round(worstHigh.pHigh)}% of the time during the ${worstHigh.name.replace(/^\S+\s/, '').toLowerCase()}, compared with ${Math.round(tar)}% overall.`,
         causes: ['Meals or snacks in this window that are hard to dose for', 'Insulin (basal or meal) not quite matching this part of the day', 'Less activity at this time (sitting at a desk, evening on the couch)'],
         tries: ['Focus on one change for this time of day only (small steps work better)', 'Check the Meals section below for which meals land here', 'Bring this time block up with your care team: they may adjust your ratio for these hours'],
@@ -291,7 +292,7 @@
     }
     const worstLow = out.blocks.slice().sort((x, y) => y.pLow - x.pLow)[0];
     if (worstLow && worstLow.pLow >= 8 && !(worstLow.name.includes('Overnight') && nightsWithLows >= 2)) {
-      add({
+      add('lowblock', {
         sev: 3, icon: '⚠️', title: `Lows cluster in the ${worstLow.name.replace(/^\S+\s/, '').toLowerCase()}`,
         what: `${Math.round(worstLow.pLow)}% of readings in the ${worstLow.name.replace(/^\S+\s/, '').toLowerCase()} are low (the goal is under 4% overall).`,
         causes: ['Insulin from an earlier meal or correction peaking in this window', 'Regular activity at this time (commute, gym, errands)', 'A long gap between meals'],
@@ -302,7 +303,7 @@
 
     // --- 8. Overall lows / variability
     if (tbr >= 4 && !out.insights.some((i) => i.sev === 3)) {
-      add({
+      add('lowtime', {
         sev: 3, icon: '🔻', title: 'More time low than recommended',
         what: `You’re below ${C.fmtBG(L)} ${tbr.toFixed(1)}% of the time. The usual goal is under 4%${nVLow / n * 100 >= 1 ? `, and ${(nVLow / n * 100).toFixed(1)}% is very low (under ${C.fmtBG(54)})` : ''}.`,
         causes: ['Doses a bit strong for current routines', 'Exercise, alcohol, or skipped meals', 'Over-correcting highs'],
@@ -311,7 +312,7 @@
       });
     }
     if (cv > 36) {
-      add({
+      add('variability', {
         sev: 1, icon: '〰️', title: 'Big ups and downs',
         what: `Your variability is ${Math.round(cv)}% (goal: 36% or less). Glucose is swinging more than ideal.`,
         causes: ['Meals with lots of fast carbs', 'Bolus timing (too late before meals)', 'Treating lows with too much sugar', 'Correcting highs aggressively'],
@@ -329,7 +330,7 @@
     if (weDays.size >= 2 && wd[1] > 288 * 3) {
       const diff = we[0] / we[1] - wd[0] / wd[1];
       if (Math.abs(diff) >= 18) {
-        add({
+        add('weekend', {
           sev: 1, icon: diff > 0 ? '🎉' : '💼', title: diff > 0 ? 'Weekends run higher' : 'Weekdays run higher',
           what: `Your average is ${mmolDiff(diff)} ${diff > 0 ? 'higher on weekends' : 'higher on weekdays'}.`,
           causes: diff > 0 ? ['Different meal times, eating out, or more treats', 'Sleeping in (basal timing shifts)', 'Less structured activity'] : ['Work stress or sitting more', 'Rushed or skipped meals, then bigger ones later', 'Less time to pre-bolus'],
@@ -350,7 +351,7 @@
       .sort((a, b) => b.rise - a.rise);
     const spiky = out.foods.filter((f) => f.rise >= 80).slice(0, 3);
     if (spiky.length) {
-      add({
+      add('foods', {
         sev: 1, icon: '🍽️', title: 'Foods that spike you most',
         what: spiky.map((f) => `${f.name} (+${mmolDiff(f.rise)})`).join(', ') + '.',
         causes: ['These may have more carbs than logged, or digest fast', 'Mixed meals (pizza, pasta) can rise late and long'],
@@ -369,7 +370,7 @@
       if (on.length < 3 || off.length < 3) continue;
       const diff = on.reduce((a, b) => a + b, 0) / on.length - off.reduce((a, b) => a + b, 0) / off.length;
       if (Math.abs(diff) >= 14) {
-        add({
+        add('meds', {
           sev: 1, icon: '💊', title: `${name}: ${diff < 0 ? 'lower' : 'higher'} days`,
           what: `On days you logged ${name}, your average was ${mmolDiff(diff)} ${diff < 0 ? 'lower' : 'higher'} (${on.length} days with, ${off.length} without).`,
           causes: ['This might be the med, or something else that tends to happen on those days', 'Patterns need a few weeks of logging to be trustworthy'],
@@ -384,12 +385,112 @@
       const nowT = last;
       const recent = tirOf(nowT - 7 * DAY, nowT), before = tirOf(nowT - 14 * DAY, nowT - 7 * DAY);
       if (recent != null && before != null && Math.abs(recent - before) >= 5) {
-        add(recent > before
+        add('progress', recent > before
           ? { sev: 0, icon: '🌟', title: 'Time in range is improving!', what: `${Math.round(recent)}% this week vs ${Math.round(before)}% the week before. Whatever you changed is working.`, causes: [], tries: ['Keep it up. Notice what was different this week and keep doing it'] }
           : { sev: 1, icon: '📉', title: 'Time in range dipped this week', what: `${Math.round(recent)}% this week vs ${Math.round(before)}% the week before.`, causes: ['Routine changes, stress, illness, a new sensor, or your cycle'], tries: ['Check the other insights here for where the time is going', 'One rough week is normal. Look for patterns over a few weeks'] });
       }
     }
-    if (tir >= 70) add({ sev: 0, icon: '🎯', title: 'Meeting the time-in-range goal', what: `You’re in range ${Math.round(tir)}% of the time (goal: 70%+).`, causes: [], tries: [] });
+    if (tir >= 70) add('goal', { sev: 0, icon: '🎯', title: 'Meeting the time-in-range goal', what: `You’re in range ${Math.round(tir)}% of the time (goal: 70%+).`, causes: [], tries: [] });
+
+
+    // --- 13. Possible compression lows (sleeping on the sensor)
+    let comp = 0;
+    for (let i = 0; i < series.length; i++) {
+      const p = series[i];
+      if (hourOf(p.t) >= 7) continue;
+      const w = windowPts(series, p.t, p.t + 20 * MIN);
+      if (w.length < 3) continue;
+      const bottom = w.reduce((m, x) => (x.mg < m.mg ? x : m), w[0]);
+      const drop = p.mg - bottom.mg;
+      if (drop < 45 || bottom.mg >= L + 10) continue;
+      const back = windowPts(series, bottom.t, bottom.t + 40 * MIN).some((x) => x.mg >= bottom.mg + drop * 0.8);
+      if (back && !trs.some((t) => t.carbs > 0 && t.t >= bottom.t - 10 * MIN && t.t <= bottom.t + 40 * MIN)) { comp++; i = lowerBound(series, p.t + 2 * HOUR); }
+    }
+    if (comp >= 2) {
+      add('compression', {
+        sev: 1, icon: '🛏️', title: 'Possible “compression lows” at night',
+        what: `${comp} times overnight your glucose dropped fast and bounced right back with no food logged. That pattern often means you were lying on your sensor.`,
+        causes: ['Pressure on the sensor (sleeping on that arm) squeezes fluid away and gives falsely low readings', 'Less often: a real low that your body corrected on its own'],
+        tries: ['Try placing your next sensor on the arm you sleep on less', 'If a night low alarm wakes you but you feel fine, confirm with a fingerstick before treating', 'Note which side you slept on'],
+      });
+    }
+
+    // --- 14. Long highs
+    const longHighs = [];
+    let hrun = null;
+    for (const p of series) {
+      if (p.mg > H) { if (hrun && p.t - hrun.end <= 15 * MIN) { hrun.end = p.t; } else { if (hrun) longHighs.push(hrun); hrun = { start: p.t, end: p.t }; } }
+    }
+    if (hrun) longHighs.push(hrun);
+    const lh = longHighs.filter((r) => r.end - r.start >= 4 * HOUR);
+    if (lh.length >= 2) {
+      add('longhigh', {
+        sev: 2, icon: '⏳', title: 'Long stretches of highs',
+        what: `${lh.length} times you stayed above range for 4+ hours (longest ${minsText(Math.max(...lh.map((r) => (r.end - r.start) / MIN)))}).`,
+        causes: ['A missed or late bolus', 'Being sick, stressed, or short on sleep', 'Insulin that got too hot or cold, or a pen/needle problem', 'High-fat meals that keep raising glucose for hours'],
+        tries: ['Check your pen needle and how your insulin is stored', 'Drink water during long highs', 'If your care team gave you a ketone plan, check ketones during long highs', 'Ask your care team how to handle highs that won’t come down'],
+        care: true,
+      });
+    }
+
+    // --- 15. Meals without a bolus / late boluses
+    if (insulinTrs.length >= 5) {
+      let noBolus = 0, late = 0;
+      for (const m of carbTrs) {
+        if (m.carbs < 15 || m.insulin > 0) continue;
+        const ins = insulinTrs.filter((t) => t.t >= m.t - 20 * MIN && t.t <= m.t + 90 * MIN);
+        if (!ins.length) noBolus++;
+        else if (ins.every((t) => t.t - m.t >= 20 * MIN)) late++;
+      }
+      if (noBolus >= 2) {
+        add('nobolus', {
+          sev: 2, icon: '❓', title: 'Meals without a logged bolus',
+          what: `${noBolus} meals had carbs logged but no insulin logged around them.`,
+          causes: ['The bolus was forgotten', 'The bolus was taken but logged somewhere else (or not logged)'],
+          tries: ['Use the Bolus tab → “Log this dose + carbs” to log both at once', 'Set a phone reminder for meal times', 'Keep your pen next to where you eat'],
+        });
+      }
+      if (late >= 2) {
+        add('latebolus', {
+          sev: 1, icon: '⏰', title: 'Boluses after eating',
+          what: `${late} times your insulin was logged 20+ minutes after the meal.`,
+          causes: ['Remembering the bolus partway through or after eating (very common with ADHD!)'],
+          tries: ['Make “pen out” part of sitting down to eat', 'A sticky note or phone reminder at usual meal times', 'Ask your care team what to do when you bolus late'],
+        });
+      }
+    }
+
+    // --- 16. Lows after exercise
+    const exTrs = trs.filter((t) => t.eventType === 'Exercise');
+    if (exTrs.length >= 2) {
+      const withLow = exTrs.filter((t) => windowPts(series, t.t, t.t + 12 * HOUR).some((p) => p.mg < L));
+      if (withLow.length >= 2 && withLow.length / exTrs.length >= 0.4) {
+        add('exerciselow', {
+          sev: 2, icon: '🏃', title: 'Lows after exercise',
+          what: `${withLow.length} of your ${exTrs.length} logged workouts were followed by a low within 12 hours.`,
+          causes: ['Muscles keep pulling in glucose for hours after exercise', 'Insulin works better (you’re more sensitive) after activity'],
+          tries: ['Have a snack with carbs + protein after longer workouts', 'Check before bed on active days', 'Ask your care team about lowering doses on exercise days'],
+          care: true,
+        });
+      }
+    }
+
+    // --- 17. Late dinners and the next morning
+    const dinners = carbTrs.filter((t) => { const h = hourOf(t.t); return h >= 16 && t.carbs >= 20; });
+    const morningAvg = (t) => { const d = new Date(t); d.setDate(d.getDate() + 1); const w = windowPts(series, atHour(d.getTime(), 6), atHour(d.getTime(), 9)); return w.length >= 12 ? w.reduce((a, p) => a + p.mg, 0) / w.length : null; };
+    const lateM = dinners.filter((t) => hourOf(t.t) >= 20.5).map((t) => morningAvg(t.t)).filter((v) => v != null);
+    const earlyM = dinners.filter((t) => hourOf(t.t) < 20.5).map((t) => morningAvg(t.t)).filter((v) => v != null);
+    if (lateM.length >= 2 && earlyM.length >= 2) {
+      const diff = lateM.reduce((a, b) => a + b, 0) / lateM.length - earlyM.reduce((a, b) => a + b, 0) / earlyM.length;
+      if (diff >= 18) {
+        add('latedinner', {
+          sev: 1, icon: '🌜', title: 'Late dinners → higher mornings',
+          what: `After dinners eaten 8:30 PM or later, your next morning averages ${mmolDiff(diff)} higher than after earlier dinners.`,
+          causes: ['Food still digesting overnight', 'Less movement after late meals'],
+          tries: ['Try finishing dinner before 8 PM on a couple of nights and compare', 'A short walk after a late dinner'],
+        });
+      }
+    }
 
     // --- AGP (30-minute bins)
     const bins = Array.from({ length: 48 }, () => []);
@@ -588,6 +689,57 @@
   C.hooks.render.push(() => { if (!$('view-trends').hidden && !lastDays && C.entries.length) renderAllTrends(); });
   window.addEventListener('cgmhub:data-imported', () => { cache = null; });
 
-  // exposed for tests
-  window.CGMHubInsights = { analyze, downsample };
+  // ---------- settings: choose insights & trend sections ----------
+  const TYPES = [
+    ['nightlows', '🌙 Lows overnight'], ['dawn', '🌅 Early-morning rise'], ['mealspike', '📈 Big rises after meals'], ['meallows', '⬇️ Lows after meals'],
+    ['rebound', '🎢 Highs after lows'], ['stacked', '🧱 Stacked corrections'], ['unlogged', '🔍 Rises with nothing logged'], ['toughhigh', '⏰ Toughest time of day'],
+    ['lowblock', '⚠️ Lows in one time block'], ['lowtime', '🔻 Too much time low'], ['variability', '〰️ Big ups and downs'], ['weekend', '🎉 Weekday vs weekend'],
+    ['foods', '🍽️ Foods that spike you'], ['meds', '💊 Meds & supplements'], ['progress', '🌟 Weekly progress'], ['goal', '🎯 Time-in-range goal'],
+    ['compression', '🛏️ Compression lows'], ['longhigh', '⏳ Long highs'], ['nobolus', '❓ Meals without a bolus'], ['latebolus', '⏰ Late boluses'],
+    ['exerciselow', '🏃 Lows after exercise'], ['latedinner', '🌜 Late dinners'],
+  ];
+  const SECTIONS = [['agp', 'Your typical day', 'agp-wrap'], ['tod', 'Time of day', 'tod-rows'], ['meals', 'Meals & foods', 'meal-rows'], ['cycle', 'Cycle (your cycle + glucose by phase)', 'cycle-stats', 'phase-rows']];
+  function applySections () {
+    const off = Array.isArray(C.S.trendOff) ? C.S.trendOff : [];
+    SECTIONS.forEach(([id, , ...els]) => els.forEach((e) => { const card = $(e) && $(e).closest('.card'); if (card) card.hidden = off.includes(id); }));
+  }
+  function checkboxList (boxId, items, key) {
+    const box = $(boxId);
+    if (!box) return;
+    box.textContent = '';
+    for (const [id, label] of items) {
+      const lab = el('label', 'check');
+      const cb = el('input'); cb.type = 'checkbox';
+      cb.checked = !(C.S[key] || []).includes(id);
+      cb.addEventListener('change', () => {
+        const cur = new Set(C.S[key] || []);
+        if (cb.checked) cur.delete(id); else cur.add(id);
+        C.S[key] = [...cur]; C.saveSettings();
+        latestCache = null; applySections();
+      });
+      lab.append(cb, document.createTextNode(' ' + label));
+      box.appendChild(lab);
+    }
+  }
+  C.hooks.view.push((v) => {
+    if (v === 'settings') { checkboxList('set-ins', TYPES, 'insOff'); checkboxList('set-trend', SECTIONS, 'trendOff'); }
+    if (v === 'trends') applySections();
+  });
+  applySections();
+
+  // latest 14-day insights, for the game's insight-based quests
+  let latestCache = null;
+  async function latest () {
+    if (latestCache && Date.now() - latestCache.at < 30 * MIN) return latestCache.res;
+    const keep = rangeDays; rangeDays = 14;
+    try {
+      const d = await loadData();
+      const res = analyze(d.series, d.trs);
+      if (res.days) latestCache = { at: Date.now(), res };
+      return res;
+    } finally { rangeDays = keep; }
+  }
+
+  // exposed for tests and other modules
+  window.CGMHubInsights = { analyze, downsample, latest, TYPES };
 })();

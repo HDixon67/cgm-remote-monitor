@@ -76,13 +76,16 @@
       </div>
 
       <div class="card">
-        <div class="card-head"><h2>Insights</h2><span class="muted small">last 24 hours</span></div>
+        <div class="card-head"><h2>Stats</h2><button class="link" id="tiles-edit" type="button">✏️ Edit tiles</button></div>
         <div class="tiles" id="tiles"></div>
-        <div class="split-wrap">
-          <div class="split-title">14-day range <span class="muted small" id="split-n"></span></div>
-          <div class="split" id="split"></div>
-          <div class="split-labels" id="split-labels"></div>
+        <div id="tiles-editor" hidden>
+          <p class="muted small">Change the time period, move tiles up or down, or remove them.</p>
+          <ul class="tile-edit-list" id="tile-edit-list"></ul>
+          <button class="btn" id="tiles-add" type="button">+ Add tiles</button>
+          <div id="tile-catalog" hidden></div>
+          <button class="btn primary" id="tiles-done" type="button">Done</button>
         </div>
+        <div id="split" hidden></div><div id="split-labels" hidden></div><span id="split-n" hidden></span>
       </div>
 
       <p class="foot muted small" id="last-sync">&nbsp;</p>
@@ -176,6 +179,22 @@
       <div class="card">
         <div class="card-head"><h2>Today’s log</h2></div>
         <ul class="ob-list" id="log-list"></ul>
+      </div>
+
+      <div class="card">
+        <h2>💧 Water &amp; 🏃 exercise</h2>
+        <div class="chips">
+          <button class="chip" type="button" data-water="250">💧 +250 ml</button>
+          <button class="chip" type="button" data-water="500">💧 +500 ml</button>
+          <button class="chip" type="button" data-water="750">💧 +750 ml</button>
+        </div>
+        <div class="grid2">
+          <label class="field"><span>Exercise</span>
+            <select id="ex-kind"><option>Walk</option><option>Run</option><option>Bike</option><option>Gym</option><option>Yoga</option><option>Dance</option><option>Swim</option><option>Sports</option><option>Other</option></select></label>
+          <label class="field"><span>Minutes</span><input type="number" inputmode="numeric" id="ex-mins" min="1" step="5" placeholder="20"></label>
+        </div>
+        <button class="btn" id="ex-save" type="button">Log exercise</button>
+        <div class="notice" id="wx-msg" hidden></div>
       </div>
       </div>
 
@@ -402,6 +421,17 @@
         <div class="notice" id="imp-msg" hidden></div>
       </div>
       <div class="card">
+        <h2>💡 Insights &amp; trends</h2>
+        <details class="help">
+          <summary>Choose which insights to show</summary>
+          <div id="set-ins" class="checks"></div>
+        </details>
+        <details class="help">
+          <summary>Choose Trends sections</summary>
+          <div id="set-trend" class="checks"></div>
+        </details>
+      </div>
+      <div class="card">
         <h2>🎮 Game</h2>
         <label class="check"><input type="checkbox" id="game-toggle"> Show my pet, XP and quests</label>
       </div>
@@ -443,6 +473,7 @@
   <script src="features.js"></script>
   <script src="insights.js"></script>
   <script src="importer.js"></script>
+  <script src="tiles.js"></script>
   <script src="game.js"></script>
 </body>
 </html>

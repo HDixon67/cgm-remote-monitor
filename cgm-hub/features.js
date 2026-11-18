@@ -36,6 +36,19 @@
   // =====================================================================
   let basket = []; // [{name, grams, per100, carbs}]  per100 null = fixed carbs
 
+  function macros100 (n) {
+    const g = (k) => { const v = Number(n && n[k]); return isNaN(v) ? 0 : v; };
+    return { kcal: g('energy-kcal_100g') || g('energy_100g') / 4.184, fat: g('fat_100g'), protein: g('proteins_100g'), fiber: g('fiber_100g') };
+  }
+  function basketMacros () {
+    const m = { calories: 0, fat: 0, protein: 0, fiber: 0 };
+    for (const x of basket) {
+      if (!x.m || !x.grams) continue;
+      const f = x.grams / 100;
+      m.calories += x.m.kcal * f; m.fat += x.m.fat * f; m.protein += x.m.protein * f; m.fiber += x.m.fiber * f;
+    }
+    return m;
+  }
   function basketTotal () { return Math.round(basket.reduce((s, x) => s + (x.carbs || 0), 0)); }
   function syncBasketToLog () {
     const total = basketTotal();
@@ -107,7 +120,7 @@
         mid.appendChild(el('div', 'muted small', [p.brands && p.brands.split(',')[0], per100 + ' g carbs / 100 g', p.serving_size ? 'serving ' + p.serving_size : ''].filter(Boolean).join(' · ')));
         li.appendChild(mid);
         const add = el('button', null, '+ Add'); add.type = 'button';
-        add.addEventListener('click', () => addToBasket({ name: p.product_name, grams: serving, per100, carbs: (per100 * serving) / 100 }));
+        add.addEventListener('click', () => addToBasket({ name: p.product_name, grams: serving, per100, carbs: (per100 * serving) / 100, m: macros100(p.nutriments) }));
         li.appendChild(add);
         ul.appendChild(li);
       }
@@ -138,7 +151,7 @@
       const serving = Number(p.serving_quantity) > 0 ? Math.round(Number(p.serving_quantity)) : 100;
       const c = Math.round(Number(per100) * 10) / 10;
       closeScanner();
-      addToBasket({ name: p.product_name || 'Scanned item', grams: serving, per100: c, carbs: (c * serving) / 100 });
+      addToBasket({ name: p.product_name || 'Scanned item', grams: serving, per100: c, carbs: (c * serving) / 100, m: macros100(p.nutriments) });
     } catch (e) {
       $('scan-status').textContent = 'Couldn’t reach the food database. Check your connection.';
     }
@@ -218,7 +231,35 @@
     C.saveSettings();
     renderFavs();
   });
+  C.hooks.beforeLogSave.push((t) => {
+    if (!basket.length || !t.carbs) return;
+    const m = basketMacros();
+    if (m.calories) t.calories = Math.round(m.calories);
+    if (m.fat) t.fat = Math.round(m.fat);
+    if (m.protein) t.protein = Math.round(m.protein);
+    if (m.fiber) t.fiber = Math.round(m.fiber);
+  });
   C.hooks.logSaved.push(() => { basket = []; renderBasket(); });
+
+  // ---------- water + exercise ----------
+  async function quickLog (t, msgEl, text) {
+    try {
+      await C.apiPostTreatment(Object.assign({ created_at: new Date().toISOString(), enteredBy: 'CGM Hub' }, t));
+      C.showMsg(msgEl, '✅ ' + text + (C.S.demo ? ' (demo only)' : ''), 'ok');
+      await C.refresh(false);
+    } catch (e) { C.showMsg(msgEl, e.message, 'danger'); }
+  }
+  document.querySelectorAll('[data-water]').forEach((b) => b.addEventListener('click', () => {
+    const ml = Number(b.dataset.water);
+    quickLog({ eventType: 'Water', water: ml, notes: ml + ' ml water' }, 'wx-msg', ml + ' ml water logged 💧');
+  }));
+  $('ex-save').addEventListener('click', () => {
+    const mins = Number($('ex-mins').value);
+    if (!(mins > 0)) { $('ex-mins').focus(); return; }
+    const kind = $('ex-kind').value;
+    quickLog({ eventType: 'Exercise', duration: mins, notes: kind + ' (' + mins + ' min)' }, 'wx-msg', mins + ' min ' + kind.toLowerCase() + ' logged 🏃');
+    $('ex-mins').value = '';
+  });
 
   // =====================================================================
   // Meds & supplements
