@@ -138,7 +138,7 @@
       fat: Number(t.fat) || 0, protein: Number(t.protein) || 0, fiber: Number(t.fiber) || 0, calories: Number(t.calories) || 0,
       water: Number(t.water) || 0, duration: Number(t.duration) || 0,
     }))
-      .filter((t) => !isNaN(t.t))
+      .filter((t) => !isNaN(t.t) && t.eventType !== 'CGMHub Settings') // reminder settings are stored as a treatment
       .sort((a, b) => b.t - a.t);
   }
 

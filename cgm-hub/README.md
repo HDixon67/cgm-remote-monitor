@@ -37,6 +37,12 @@ Settings → **💡 Insights & trends** lets you switch each insight type and Tr
 Tap the pet card on Home. Pick a buddy, earn XP for logging, in-range hours, good days, handling lows well and 3 daily quests (one is picked from your insights, e.g. a walk after the meal that spikes you most). Level up to grow your pet and unlock wardrobe items; collect badges.
 XP never goes down, highs/lows never cost anything, and streaks have ❄️ freezes (one per 7 days). XP is worked out from your Nightscout data; pet, badges and manual quest check-offs live on the phone (`cgmhub.game.v1`). Turn it off in Settings.
 
+## Phone reminders 🔔
+
+Settings → **🔔 Phone reminders**: meds (only if not logged yet, with a second nudge an hour later), bedtime glucose check (with your current number), bolus check (carbs logged but no insulin 15 min later), quest nudge, and your own reminders.
+Settings are saved in Nightscout as a `CGMHub Settings` treatment. A Northflank cron job (`cgm-reminders`, every 15 min, smallest plan) downloads `reminders/reminders.mjs` from this repo's `master` branch and sends them through Pushover.
+Needs `PUSHOVER_API_TOKEN` and `PUSHOVER_ALARM_KEY` in the project's `nightscout` secret group (these also send Nightscout's own low/high/no-data alarms).
+
 ## Import Libre history
 
 Settings → **Import Libre history**. Download the CSV from libreview.com (Glucose History → Download glucose data), then pick the file.
