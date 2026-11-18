@@ -26,7 +26,6 @@
   function showLogTab (name) {
     document.querySelectorAll('.logseg button[data-logtab]').forEach((b) => b.classList.toggle('on', b.dataset.logtab === name));
     document.querySelectorAll('[data-logpanel]').forEach((p) => { p.hidden = p.dataset.logpanel !== name; });
-    if (name === 'meds') { $('med-time').value = nowLocalInput(); renderMeds(); }
     if (name === 'period') { if (!$('period-date').value) $('period-date').value = dayKey(Date.now()); renderPeriodPanel(); }
   }
   document.querySelectorAll('.logseg button[data-logtab]').forEach((b) => b.addEventListener('click', () => showLogTab(b.dataset.logtab)));
@@ -279,87 +278,8 @@
     const mins = Number($('ex-mins').value);
     if (!(mins > 0)) { $('ex-mins').focus(); return; }
     const kind = $('ex-kind').value;
-    quickLog({ eventType: 'Exercise', duration: mins, notes: kind + ' (' + mins + ' min)' }, 'wx-msg', mins + ' min ' + kind.toLowerCase() + ' logged 🏃');
+    quickLog({ eventType: 'Exercise', duration: mins, notes: kind + ' (' + mins + ' min)' }, 'ex-msg', mins + ' min ' + kind.toLowerCase() + ' logged 🏃');
     $('ex-mins').value = '';
-  });
-
-  // =====================================================================
-  // Meds & supplements
-  // =====================================================================
-  const meds = () => (Array.isArray(C.S.meds) ? C.S.meds : []);
-  let armed = null; let armTimer = null;
-
-  function renderMeds () {
-    const grid = $('med-buttons');
-    grid.textContent = '';
-    if (!meds().length) grid.appendChild(el('p', 'muted small', 'Add your meds and supplements to “My list” below first.'));
-    meds().forEach((m, i) => {
-      const b = el('button', 'med-btn' + (armed === i ? ' confirm' : ''));
-      b.type = 'button';
-      b.appendChild(document.createTextNode((m.type === 'supplement' ? '🌿 ' : '💊 ') + m.name));
-      b.appendChild(el('small', null, armed === i ? 'Tap again to log' : (m.dose || ' ')));
-      b.addEventListener('click', () => onMedTap(i));
-      grid.appendChild(b);
-    });
-
-    const today = C.treatments.filter((t) => t.kind === 'med' && t.t >= startOfDay(Date.now()));
-    const ul = $('med-today');
-    ul.textContent = '';
-    if (!today.length) ul.appendChild(el('li', 'empty', 'Nothing logged today yet.'));
-    for (const t of today) {
-      const li = el('li');
-      li.appendChild(C.iconFor(t));
-      const mid = el('div', 'grow');
-      mid.appendChild(el('div', 'title', C.treatmentLabel(t)));
-      mid.appendChild(el('div', 'muted small', C.clockTime(t.t)));
-      li.appendChild(mid);
-      ul.appendChild(li);
-    }
-
-    const list = $('med-list');
-    list.textContent = '';
-    if (!meds().length) list.appendChild(el('li', 'empty', 'Your list is empty.'));
-    meds().forEach((m, i) => {
-      const li = el('li');
-      li.appendChild(el('span', 'ic other', m.type === 'supplement' ? '🌿' : '💊'));
-      const mid = el('div', 'grow');
-      mid.appendChild(el('div', 'title', m.name));
-      mid.appendChild(el('div', 'muted small', [m.dose, m.type].filter(Boolean).join(' · ')));
-      li.appendChild(mid);
-      const del = el('button', 'del', '✕'); del.type = 'button'; del.setAttribute('aria-label', 'Remove ' + m.name);
-      del.addEventListener('click', () => { if (confirm('Remove ' + m.name + ' from your list?')) { C.S.meds = meds().filter((_, j) => j !== i); C.saveSettings(); renderMeds(); } });
-      li.appendChild(del);
-      list.appendChild(li);
-    });
-  }
-  async function onMedTap (i) {
-    if (armed !== i) {
-      armed = i; renderMeds();
-      clearTimeout(armTimer);
-      armTimer = setTimeout(() => { armed = null; renderMeds(); }, 4000);
-      return;
-    }
-    clearTimeout(armTimer); armed = null;
-    const m = meds()[i];
-    const when = $('med-time').value ? new Date($('med-time').value) : new Date();
-    try {
-      await C.apiPostTreatment({
-        eventType: 'Medication', created_at: when.toISOString(), enteredBy: 'CGM Hub',
-        notes: [m.name, m.dose].filter(Boolean).join(' '), medName: m.name, medDose: m.dose || '', medType: m.type,
-      });
-      C.showMsg('med-msg', '✅ ' + m.name + ' logged at ' + C.clockTime(when.getTime()) + (C.S.demo ? ' (demo only)' : '') + '.', 'ok');
-      $('med-time').value = nowLocalInput();
-      await C.refresh(false);
-    } catch (e) { C.showMsg('med-msg', e.message, 'danger'); }
-    renderMeds();
-  }
-  $('med-add').addEventListener('click', () => {
-    const name = $('med-name').value.trim();
-    if (!name) { $('med-name').focus(); return; }
-    C.S.meds = meds().concat([{ name, dose: $('med-dose').value.trim(), type: $('med-type').value }]);
-    C.saveSettings();
-    $('med-name').value = ''; $('med-dose').value = '';
-    renderMeds();
   });
 
   // =====================================================================
@@ -620,7 +540,6 @@
   C.hooks.render.push(() => {
     renderCycleChip();
     if (!$('view-log').hidden) {
-      if (!document.querySelector('[data-logpanel="meds"]').hidden) renderMeds();
       if (!document.querySelector('[data-logpanel="period"]').hidden) renderPeriodPanel();
     }
     if (!$('view-trends').hidden) { renderTrends(); if (!historyTried && C.periods.length) { historyTried = true; buildHistory(); } }
@@ -631,4 +550,5 @@
     if (view === 'trends') { renderTrends(); if (C.periods.length) historyTried = true; buildHistory(); }
   });
   renderFavs();
+  window.CGMHubFeatures = { showLogTab, cycleModel, phaseAt, renderPeriodPanel, phaseName };
 })();

@@ -49,15 +49,21 @@
   function render () {
     const box = $('rem-list');
     box.textContent = '';
-    // meds from the saved med list
-    const meds = Array.isArray(C.S.meds) ? C.S.meds : [];
+    // meds: one reminder per scheduled dose, at the time set in Log → Meds
+    const all = window.CGMHubLogHub ? window.CGMHubLogHub.meds() : (Array.isArray(C.S.meds) ? C.S.meds : []);
+    const meds = all.filter((m) => Array.isArray(m.times) && m.times.length);
     box.appendChild(el('div', 'split-title', '💊 Meds & supplements (only if not logged yet)'));
-    if (!meds.length) box.appendChild(el('p', 'muted small', 'Add meds in Log → 💊 Meds first.'));
+    if (!meds.length) box.appendChild(el('p', 'muted small', 'Add meds with a schedule in Log → 💊 Meds first.'));
+    const fmt = (hhmm) => { const [h, m] = hhmm.split(':').map(Number); return new Date(2000, 0, 1, h, m).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); };
+    // keep only reminders that still match a scheduled dose
+    cfg.meds = (cfg.meds || []).filter((x) => meds.some((m) => m.name === x.name && m.times[x.n || 0] === x.time));
     for (const m of meds) {
-      const saved = (cfg.meds || []).find((x) => x.name === m.name) || { name: m.name, dose: m.dose, on: false, time: '09:00', nag: true };
-      box.appendChild(row(m.name, m.dose || '', saved.on, saved.time, (on, time) => {
-        cfg.meds = (cfg.meds || []).filter((x) => x.name !== m.name).concat([{ name: m.name, dose: m.dose || '', on, time, nag: true }]);
-      }));
+      m.times.forEach((time, n) => {
+        const saved = cfg.meds.find((x) => x.name === m.name && (x.n || 0) === n);
+        box.appendChild(row(m.name, (m.dose ? m.dose + ' · ' : '') + fmt(time), saved ? saved.on : false, undefined, (on) => {
+          cfg.meds = cfg.meds.filter((x) => !(x.name === m.name && (x.n || 0) === n)).concat([{ name: m.name, dose: m.dose || '', time, n, on, nag: true }]);
+        }));
+      });
     }
     box.appendChild(el('div', 'split-title', '📅 Daily'));
     box.appendChild(row('🌙 Bedtime glucose check', 'with your current number', cfg.bedtime.on, cfg.bedtime.time, (on, time) => { cfg.bedtime = { on, time }; }));
