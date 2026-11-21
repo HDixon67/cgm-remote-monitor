@@ -180,17 +180,19 @@
               <div class="grid2">
                 <label class="field"><span>Name</span><input type="text" id="qa-name" maxlength="60" placeholder="Chalupa"></label>
                 <label class="field"><span>Carbs (g)</span><input type="number" inputmode="decimal" id="qa-carbs" min="0" step="1"></label>
+                <label class="field"><span>Fibre (g, optional)</span><input type="number" inputmode="decimal" id="qa-fiber" min="0" step="0.5"></label>
               </div>
               <button class="btn" id="qa-add" type="button">Add to meal</button>
             </details>
             <div class="sub-card" id="basket-card" hidden>
               <div class="card-head"><h2>This meal</h2><button class="link" id="basket-clear" type="button">Clear</button></div>
               <ul class="basket" id="basket"></ul>
-              <div class="basket-total">Total carbs: <b id="basket-total">0</b> g</div>
+              <div class="basket-total"><span id="basket-carb-label">Net carbs</span>: <b id="basket-total">0</b> g<div class="muted small" id="basket-breakdown"></div></div>
+              <details class="meal-facts"><summary>🧾 Meal nutrition facts</summary><div id="meal-facts-body"></div></details>
               <button class="btn" id="fav-save" type="button">⭐ Save as a favourite</button>
             </div>
             <div class="sub-card">
-              <label class="field"><span>Carbs (g)</span>
+              <label class="field"><span id="log-carbs-label">Carbs (g)</span>
                 <input type="number" inputmode="decimal" step="1" min="0" id="log-carbs" placeholder="0"></label>
               <label class="field"><span>Rapid insulin for this meal (u)</span>
                 <input type="number" inputmode="decimal" step="0.5" min="0" id="log-insulin" placeholder="0"></label>
@@ -428,6 +430,11 @@
       </div>
 
       <div class="card mode-hist">
+        <h2>🥗 Nutrition</h2>
+        <div id="hist-nut"></div>
+      </div>
+
+      <div class="card mode-hist">
         <h2>💡 Patterns</h2>
         <p class="muted small" id="ins-status">&nbsp;</p>
         <div id="ins-list"></div>
@@ -554,6 +561,20 @@
         <div class="notice" id="imp-msg" hidden></div>
       </div>
       <div class="card">
+        <h2>🥗 Nutrition</h2>
+        <label class="field"><span>Count carbs as</span>
+          <select id="set-carbmode"><option value="net">Net carbs (carbs − fibre)</option><option value="total">Total carbs</option></select></label>
+        <p class="muted small">This is what gets logged and used by the bolus calculator and forecast. Ask your care team which way they want you to count.</p>
+        <details class="help">
+          <summary>Daily targets</summary>
+          <p class="muted small">Standard adult Daily Values to start. Change them to what your dietitian recommends; leave blank to use the default. Calories and carbs have no default.</p>
+          <div class="grid2" id="nut-targets"></div>
+          <button class="btn" id="nut-reset" type="button">Reset to standard values</button>
+        </details>
+        <button class="btn primary" id="nut-save" type="button">Save nutrition settings</button>
+        <div class="notice" id="nut-msg" hidden></div>
+      </div>
+      <div class="card">
         <h2>🍎 Food search</h2>
         <p class="muted small">Food search uses USDA FoodData Central (plain foods + brands). Barcode scans use Open Food Facts. The shared key only allows a few searches an hour, so get your own free key:</p>
         <ol class="small">
@@ -646,6 +667,7 @@
   </div>
 
   <script src="app.js"></script>
+  <script src="nutrition.js"></script>
   <script src="features.js"></script>
   <script src="insights.js"></script>
   <script src="importer.js"></script>

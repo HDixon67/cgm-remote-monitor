@@ -176,6 +176,7 @@
       }
       if (mode === 'day') { dayChart(d.series, d.trs, a, b); logbook(d.trs.filter((t) => t.eventType !== 'CGMHub Settings')); }
       summary(d.trs, a, b);
+      if (window.CGMHubNutrition) window.CGMHubNutrition.renderNutrition($('hist-nut'), d.trs, mode === 'day');
     } catch (e) {
       $('ins-status').textContent = '⚠️ ' + e.message;
     } finally { busy = false; }

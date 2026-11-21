@@ -36,6 +36,13 @@ It runs only in your browser. Your data stays in Nightscout; your token and sett
 
 Word search uses **USDA FoodData Central** (Open Food Facts' word search no longer allows web apps). Add a free key in Settings → 🍎 Food search (the shared DEMO_KEY allows only a few searches an hour). Barcode scans still use Open Food Facts. Foods you log appear as 🕘 Recent chips.
 
+## Portions, net carbs and nutrition
+
+- Each food in a meal has an amount + unit: label serving, per piece (e.g. "1 stick" from "3 sticks (85 g)"), cup/slice/medium from USDA portion data, g, oz, 100 g.
+- Net carbs (carbs − fibre) are shown per food and per meal. Settings → 🥗 Nutrition chooses whether **net** (default) or **total** carbs are logged (that's what the calculator and forecast use).
+- Full nutrition facts per food and per meal (calories, fat, saturated/trans fat, cholesterol, sodium, carbs, fibre, sugars, added sugars, protein, potassium, calcium, iron, magnesium, zinc, vitamins A, C, D, B12, folate), saved with the meal as `nutrients`.
+- History → 🥗 Nutrition: today's totals or daily averages vs targets (standard adult Daily Values by default, editable in Settings), with foods to add for low nutrients and tips for ones running high (needs 3+ days of full-nutrition meals).
+
 ## Stat tiles
 
 Home → Stats → ✏️ **Edit tiles**: add from ~35 tiles (in/above/below range, range split, average, bedtime & wake-up averages, median, highs/lows, Flux grade, mini graph, in-range streak, unicorns 🦄, time low/high, GMI, insulin/bolus/basal per day and totals, carbs, calories, protein, fat, fiber, water, exercise, CV, SD, quartiles). Each tile has its own period (today, 24 h, 3/7/14 days); reorder with ▲▼.

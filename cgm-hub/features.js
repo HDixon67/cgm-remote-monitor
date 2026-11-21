@@ -33,20 +33,41 @@
   // =====================================================================
   // Food search (Open Food Facts) + meal basket + favourites
   // =====================================================================
-  let basket = []; // [{name, grams, per100, carbs}]  per100 null = fixed carbs
+  // items: {name, brand, n100 (nutrients per 100 g), units [{label, g}], unit, qty, grams, carbs (net or total), fixed}
+  let basket = [];
+  const N = () => window.CGMHubNutrition;
 
-  function macros100 (n) {
-    const g = (k) => { const v = Number(n && n[k]); return isNaN(v) ? 0 : v; };
-    return { kcal: g('energy-kcal_100g') || g('energy_100g') / 4.184, fat: g('fat_100g'), protein: g('proteins_100g'), fiber: g('fiber_100g') };
-  }
-  function basketMacros () {
-    const m = { calories: 0, fat: 0, protein: 0, fiber: 0 };
-    for (const x of basket) {
-      if (!x.m || !x.grams) continue;
-      const f = x.grams / 100;
-      m.calories += x.m.kcal * f; m.fat += x.m.fat * f; m.protein += x.m.protein * f; m.fiber += x.m.fiber * f;
+  // turn older saved items (favourites / recents) into the new shape
+  function normalizeItem (it) {
+    it = Object.assign({}, it);
+    if (it.fixed || it.per100 == null && !it.n100) { it.fixed = true; it.totalCarbs = it.totalCarbs ?? it.carbs ?? 0; it.fiberG = it.fiberG || 0; return it; }
+    if (!it.n100) {
+      const m = it.m || {};
+      it.n100 = { carbs: it.per100, fiber: m.fiber || undefined, kcal: m.kcal || undefined, fat: m.fat || undefined, protein: m.protein || undefined };
+      Object.keys(it.n100).forEach((k) => it.n100[k] == null && delete it.n100[k]);
     }
-    return m;
+    if (!Array.isArray(it.units) || !it.units.length) { it.units = N().unitsFrom({}); it.unit = 0; it.qty = it.grams || 100; }
+    if (it.unit == null) it.unit = 0;
+    if (!(it.qty > 0)) it.qty = 1;
+    return it;
+  }
+  function recompute (it) {
+    if (it.fixed) { it.carbs = N().carbMode() === 'net' ? Math.max(0, it.totalCarbs - (it.fiberG || 0)) : it.totalCarbs; return it; }
+    const u = it.units[it.unit] || it.units[0];
+    it.grams = it.qty * u.g;
+    it.n = N().scaled(it.n100, it.grams);
+    it.totalCarbs = it.n.carbs || 0;
+    it.fiberG = it.n.fiber || 0;
+    it.carbs = N().carbMode() === 'net' ? N().netOf(it.n) : it.totalCarbs;
+    return it;
+  }
+  function mealNutrients () {
+    const sum = {};
+    for (const x of basket) {
+      if (x.fixed) { sum.carbs = (sum.carbs || 0) + x.totalCarbs; if (x.fiberG) sum.fiber = (sum.fiber || 0) + x.fiberG; continue; }
+      for (const k in x.n) sum[k] = (sum[k] || 0) + x.n[k];
+    }
+    return sum;
   }
   function basketTotal () { return Math.round(basket.reduce((s, x) => s + (x.carbs || 0), 0)); }
   function syncBasketToLog () {
@@ -54,40 +75,72 @@
     $('log-carbs').value = basket.length ? total : $('log-carbs').value;
     if (basket.length) $('log-note').value = basket.map((x) => x.name).join(' + ').slice(0, 140);
   }
+  function carbLine (x) {
+    const net = Math.max(0, (x.totalCarbs || 0) - (x.fiberG || 0));
+    return N().carbMode() === 'net'
+      ? `Net ${Math.round(net)} g` + (x.fiberG ? ` (${Math.round(x.totalCarbs)} carbs − ${Math.round(x.fiberG * 10) / 10} fibre)` : '')
+      : `${Math.round(x.totalCarbs)} g carbs` + (x.fiberG ? ` · net ${Math.round(net)} g` : '');
+  }
+  function renderTotals () {
+    const net = N().carbMode() === 'net';
+    const n = mealNutrients();
+    $('basket-carb-label').textContent = net ? 'Net carbs' : 'Total carbs';
+    $('log-carbs-label').textContent = net ? 'Net carbs (g)' : 'Carbs (g)';
+    $('basket-total').textContent = basketTotal();
+    $('basket-breakdown').textContent = [`${Math.round(n.carbs || 0)} g carbs`, n.fiber != null ? `${Math.round(n.fiber * 10) / 10} g fibre` : '', n.kcal != null ? Math.round(n.kcal) + ' kcal' : '', n.protein != null ? Math.round(n.protein) + ' g protein' : ''].filter(Boolean).join(' · ');
+    const body = $('meal-facts-body');
+    body.textContent = '';
+    body.appendChild(N().factsPanel(n, { note: basket.some((x) => x.fixed) ? 'hand-typed foods only add carbs' : '' }));
+  }
   function renderBasket () {
     $('basket-card').hidden = !basket.length;
     const ul = $('basket');
     ul.textContent = '';
     basket.forEach((item, i) => {
-      const li = el('li');
+      const li = el('li', 'bk-item');
+      const head = el('div', 'bk-head');
       const mid = el('div', 'grow');
       mid.appendChild(el('div', 'title', item.name));
-      mid.appendChild(el('div', 'muted small', item.per100 != null ? `${item.per100} g carbs per 100 g` : 'carbs entered by hand'));
-      li.appendChild(mid);
-      if (item.per100 != null) {
-        const g = el('input'); g.type = 'number'; g.inputMode = 'decimal'; g.min = '0'; g.value = item.grams;
-        g.setAttribute('aria-label', 'Grams of ' + item.name);
-        g.addEventListener('input', () => {
-          item.grams = Number(g.value) || 0;
-          item.carbs = (item.per100 * item.grams) / 100;
-          carbsEl.textContent = Math.round(item.carbs) + ' g';
-          $('basket-total').textContent = basketTotal();
-          syncBasketToLog();
-        });
-        li.appendChild(g);
-        li.appendChild(el('span', 'muted small', 'g'));
-      }
-      const carbsEl = el('span', 'carbs', Math.round(item.carbs) + ' g');
-      li.appendChild(carbsEl);
+      const line = el('div', 'muted small', item.fixed ? 'typed by hand · ' + carbLine(item) : (item.brand ? item.brand + ' · ' : '') + carbLine(item));
+      mid.appendChild(line);
+      head.appendChild(mid);
       const del = el('button', 'del', '✕'); del.type = 'button'; del.setAttribute('aria-label', 'Remove ' + item.name);
       del.addEventListener('click', () => { basket.splice(i, 1); renderBasket(); syncBasketToLog(); });
-      li.appendChild(del);
+      head.appendChild(del);
+      li.appendChild(head);
+      if (!item.fixed) {
+        const ctl = el('div', 'bk-ctl');
+        const q = el('input'); q.type = 'number'; q.inputMode = 'decimal'; q.min = '0'; q.step = 'any'; q.value = item.qty;
+        q.setAttribute('aria-label', 'Amount of ' + item.name);
+        const sel = el('select'); sel.setAttribute('aria-label', 'Unit for ' + item.name);
+        item.units.forEach((u, k) => { const o = el('option', null, N().unitLabel(u)); o.value = k; if (k === item.unit) o.selected = true; sel.appendChild(o); });
+        const facts = el('details', 'bk-facts'); facts.appendChild(el('summary', null, '🧾 Nutrition'));
+        const fbody = el('div'); facts.appendChild(fbody);
+        const update = () => {
+          item.qty = Number(q.value) || 0; item.unit = Number(sel.value);
+          recompute(item);
+          line.textContent = (item.brand ? item.brand + ' · ' : '') + carbLine(item) + ' · ' + Math.round(item.grams) + ' g';
+          fbody.textContent = ''; fbody.appendChild(N().factsPanel(item.n));
+          renderTotals(); syncBasketToLog();
+        };
+        q.addEventListener('input', update);
+        sel.addEventListener('change', () => {
+          // keep the same weight when switching units, rounded to a friendly amount
+          const g = item.grams, u = item.units[Number(sel.value)];
+          q.value = Math.max(0.25, Math.round((g / u.g) * 4) / 4);
+          update();
+        });
+        ctl.append(q, sel);
+        li.appendChild(ctl);
+        li.appendChild(facts);
+        update();
+      }
       ul.appendChild(li);
     });
-    $('basket-total').textContent = basketTotal();
+    renderTotals();
   }
   function addToBasket (item) {
-    basket.push(item);
+    basket.push(recompute(normalizeItem(item)));
     renderBasket();
     syncBasketToLog();
     $('basket-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -95,25 +148,18 @@
 
   // Food search: USDA FoodData Central (Open Food Facts' word search no longer works from web apps).
   // Values in search results are per 100 g. A free personal key (Settings) avoids the tiny shared DEMO_KEY limit.
-  const NUT = { carbs: '205', kcal: '208', kcalAtwater: '957', fat: '204', protein: '203', fiber: '291' };
   const titleCase = (s) => String(s || '').toLowerCase().replace(/(^|[\s,(/-])\S/g, (m) => m.toUpperCase());
   function fdcFood (f) {
-    const n = {};
-    for (const x of f.foodNutrients || []) { const num = String(x.nutrientNumber || ''); if (n[num] == null && typeof x.value === 'number') n[num] = x.value; }
-    if (n[NUT.carbs] == null) return null;
-    let grams = 100, servingLabel = '';
+    const n100 = N().fromFdc(f);
+    if (n100.carbs == null) return null;
     const unit = String(f.servingSizeUnit || '').toLowerCase();
-    if (f.servingSize > 0 && (unit === 'g' || unit === 'grm' || unit === 'ml' || unit === 'mlt')) { grams = Math.round(f.servingSize); servingLabel = (f.householdServingFullText ? f.householdServingFullText + ' · ' : '') + grams + ' ' + (unit.startsWith('m') ? 'ml' : 'g'); }
-    else if (Array.isArray(f.foodMeasures) && f.foodMeasures.length) {
-      const m = f.foodMeasures.find((x) => x.gramWeight > 0 && x.disseminationText && !/quantity not specified/i.test(x.disseminationText)) || f.foodMeasures.find((x) => x.gramWeight > 0);
-      if (m) { grams = Math.round(m.gramWeight); servingLabel = (m.disseminationText ? m.disseminationText + ' · ' : '') + grams + ' g'; }
-    }
+    const servingG = f.servingSize > 0 && /^(g|grm|ml|mlt)$/.test(unit) ? f.servingSize : 0;
+    const units = N().unitsFrom({ servingText: f.householdServingFullText || '', servingG, measures: f.foodMeasures });
+    const def = units.findIndex((u) => !/^(g|oz|100 g)$/.test(u.label));
     return {
       name: f.dataType === 'Branded' ? titleCase(f.description) : titleCase(f.description).replace(/, Raw$/, ''),
       brand: f.dataType === 'Branded' ? titleCase(f.brandName || f.brandOwner || '') : '',
-      per100: Math.round(n[NUT.carbs] * 10) / 10,
-      grams, servingLabel,
-      m: { kcal: n[NUT.kcal] ?? n[NUT.kcalAtwater] ?? 0, fat: n[NUT.fat] || 0, protein: n[NUT.protein] || 0, fiber: n[NUT.fiber] || 0 },
+      n100, units, unit: def >= 0 ? def : units.findIndex((u) => u.label === '100 g'), qty: 1,
       branded: f.dataType === 'Branded',
     };
   }
@@ -144,10 +190,11 @@
         const li = el('li');
         const mid = el('div', 'grow');
         mid.appendChild(el('div', 'title', f.name));
-        mid.appendChild(el('div', 'muted small', [f.brand, f.per100 + ' g carbs / 100 g', f.servingLabel].filter(Boolean).join(' · ')));
+        const u0 = f.units[f.unit]; const n0 = N().scaled(f.n100, u0.g);
+        mid.appendChild(el('div', 'muted small', [f.brand, N().unitLabel(u0) + ': ' + (N().carbMode() === 'net' ? 'net ' + Math.round(N().netOf(n0)) : Math.round(n0.carbs)) + ' g carbs' + (n0.kcal != null ? ' · ' + Math.round(n0.kcal) + ' kcal' : ''), f.units.length > 4 ? (f.units.length - 3) + ' portion sizes' : ''].filter(Boolean).join(' · ')));
         li.appendChild(mid);
         const add = el('button', null, '+ Add'); add.type = 'button';
-        add.addEventListener('click', () => addToBasket({ name: f.name, grams: f.grams, per100: f.per100, carbs: (f.per100 * f.grams) / 100, m: f.m }));
+        add.addEventListener('click', () => addToBasket({ name: f.name, brand: f.brand, n100: f.n100, units: f.units, unit: f.unit, qty: 1 }));
         li.appendChild(add);
         ul.appendChild(li);
       }
@@ -179,7 +226,7 @@
     for (const it of list) {
       const chip = el('button', 'chip', it.name);
       chip.type = 'button';
-      chip.appendChild(el('small', null, Math.round(it.carbs) + 'g'));
+      chip.appendChild(el('small', null, Math.round(recompute(normalizeItem(it)).carbs) + 'g'));
       chip.addEventListener('click', () => addToBasket(Object.assign({}, it)));
       box.appendChild(chip);
     }
@@ -203,10 +250,10 @@
       if (!p || data.status === 0) { $('scan-status').textContent = 'Not found in the food database. Try searching by name, or add it by hand.'; return; }
       const per100 = p.nutriments && p.nutriments.carbohydrates_100g;
       if (per100 == null) { $('scan-status').textContent = 'Found “' + (p.product_name || code) + '”, but it has no carb info. Add it by hand.'; $('qa-name').value = p.product_name || ''; return; }
-      const serving = Number(p.serving_quantity) > 0 ? Math.round(Number(p.serving_quantity)) : 100;
-      const c = Math.round(Number(per100) * 10) / 10;
+      const units = N().unitsFrom({ servingText: p.serving_size || '', servingG: Number(p.serving_quantity) || 0 });
+      const def = units.findIndex((u) => !/^(g|oz|100 g)$/.test(u.label));
       closeScanner();
-      addToBasket({ name: p.product_name || 'Scanned item', grams: serving, per100: c, carbs: (c * serving) / 100, m: macros100(p.nutriments) });
+      addToBasket({ name: p.product_name || 'Scanned item', brand: (p.brands || '').split(',')[0], n100: N().fromOff(p.nutriments), units, unit: def >= 0 ? def : units.findIndex((u) => u.label === '100 g'), qty: 1 });
     } catch (e) {
       $('scan-status').textContent = 'Couldn’t reach the food database. Check your connection.';
     }
@@ -252,8 +299,8 @@
     const name = $('qa-name').value.trim() || 'Food';
     const carbs = Number($('qa-carbs').value);
     if (!(carbs >= 0) || $('qa-carbs').value === '') { $('qa-carbs').focus(); return; }
-    addToBasket({ name, grams: null, per100: null, carbs });
-    $('qa-name').value = ''; $('qa-carbs').value = '';
+    addToBasket({ name, fixed: true, totalCarbs: carbs, fiberG: Number($('qa-fiber').value) || 0 });
+    $('qa-name').value = ''; $('qa-carbs').value = ''; $('qa-fiber').value = '';
   });
   $('basket-clear').addEventListener('click', () => { basket = []; renderBasket(); $('log-carbs').value = ''; $('log-note').value = ''; });
 
@@ -268,7 +315,7 @@
       chip.type = 'button';
       chip.appendChild(el('small', null, Math.round(m.carbs) + 'g'));
       chip.addEventListener('click', () => {
-        basket = m.items.map((x) => Object.assign({}, x));
+        basket = m.items.map((x) => recompute(normalizeItem(x)));
         renderBasket(); syncBasketToLog();
       });
       chip.addEventListener('contextmenu', (ev) => {
@@ -282,23 +329,24 @@
     if (!basket.length) return;
     const name = (prompt('Name this meal:', basket.map((x) => x.name).join(' + ').slice(0, 40)) || '').trim();
     if (!name) return;
-    C.S.meals = favs().filter((m) => m.name !== name).concat([{ name, carbs: basketTotal(), items: basket.map((x) => Object.assign({}, x)) }]);
+    C.S.meals = favs().filter((m) => m.name !== name).concat([{ name, carbs: basketTotal(), items: basket.map((x) => ({ name: x.name, brand: x.brand, n100: x.n100, units: x.units, unit: x.unit, qty: x.qty, fixed: x.fixed, totalCarbs: x.totalCarbs, fiberG: x.fiberG })) }]);
     C.saveSettings();
     renderFavs();
   });
   C.hooks.beforeLogSave.push((t) => {
     if (!basket.length || !t.carbs) return;
-    const m = basketMacros();
-    if (m.calories) t.calories = Math.round(m.calories);
-    if (m.fat) t.fat = Math.round(m.fat);
-    if (m.protein) t.protein = Math.round(m.protein);
-    if (m.fiber) t.fiber = Math.round(m.fiber);
+    const n = mealNutrients();
+    const r = (v) => Math.round(v * 100) / 100;
+    t.nutrients = {}; for (const k in n) t.nutrients[k] = r(n[k]);
+    t.carbMode = N().carbMode();
+    if (n.carbs != null) t.totalCarbs = r(n.carbs);
+    if (n.kcal) t.calories = Math.round(n.kcal);
+    if (n.fat) t.fat = r(n.fat);
+    if (n.protein) t.protein = r(n.protein);
+    if (n.fiber) t.fiber = r(n.fiber);
+    rememberFoods(basket.map((x) => ({ name: x.name, brand: x.brand, n100: x.n100, units: x.units, unit: x.unit, qty: x.qty, fixed: x.fixed, totalCarbs: x.totalCarbs, fiberG: x.fiberG, carbs: x.carbs })));
   });
-  C.hooks.beforeLogSave.push((t) => {
-    if (!t.carbs) return;
-    if (basket.length) rememberFoods(basket.map((x) => ({ name: x.name, grams: x.grams, per100: x.per100, carbs: x.carbs, m: x.m })));
-    else if (t.notes) rememberFoods([{ name: t.notes, grams: null, per100: null, carbs: t.carbs }]);
-  });
+  C.hooks.beforeLogSave.push((t) => { if (!basket.length && t.carbs && t.notes) rememberFoods([{ name: t.notes, fixed: true, totalCarbs: t.carbs, carbs: t.carbs }]); });
   C.hooks.logSaved.push(() => { basket = []; renderBasket(); });
 
   // ---------- water + exercise ----------
