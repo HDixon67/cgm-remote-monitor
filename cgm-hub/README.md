@@ -25,6 +25,17 @@ It runs only in your browser. Your data stays in Nightscout; your token and sett
 2. Open CGM Hub → **Settings** → paste your Nightscout URL and token → fill in your numbers → tick the box → **Save**.
 3. Phone: open the browser menu → **Add to Home screen**.
 
+## History, morning brief, mood
+
+- **Trends → History**: Day / Week / Month / Cycle with ‹ › and a date picker. Time in range (vs the previous period), average, variability, lows/highs cards, a day chart or typical-day chart, a day summary or daily averages (insulin, carbs, macros, activity, water, mood), patterns, time of day, meals, and a day logbook.
+- **Patterns** only appear when something happened at least twice (most need 3+). The main one is shown first with dots for each night/day and a one-week 🧪 experiment.
+- **☀️ Morning brief** (Home button; opens once each morning, can be turned off in Settings → Game): lowest yesterday + how you feel, a 06:00→06:00 timeline, and your top pattern.
+- **🙂 How do you feel?** check-in (faces + Body/Mind chips), saved as a `Mood` treatment; a pattern compares glucose on days with each feeling (needs 3+ days).
+
+## Food search
+
+Word search uses **USDA FoodData Central** (Open Food Facts' word search no longer allows web apps). Add a free key in Settings → 🍎 Food search (the shared DEMO_KEY allows only a few searches an hour). Barcode scans still use Open Food Facts. Foods you log appear as 🕘 Recent chips.
+
 ## Stat tiles
 
 Home → Stats → ✏️ **Edit tiles**: add from ~35 tiles (in/above/below range, range split, average, bedtime & wake-up averages, median, highs/lows, Flux grade, mini graph, in-range streak, unicorns 🦄, time low/high, GMI, insulin/bolus/basal per day and totals, carbs, calories, protein, fat, fiber, water, exercise, CV, SD, quartiles). Each tile has its own period (today, 24 h, 3/7/14 days); reorder with ▲▼.

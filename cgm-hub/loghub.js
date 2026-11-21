@@ -14,7 +14,7 @@
   // =====================================================================
   // Sheets
   // =====================================================================
-  const TITLES = { food: '🍽️ Food', rapid: '💧 Rapid insulin', basal: '💧 Long-acting insulin', meds: '💊 Meds & supplements', activity: '🏃 Activity', water: '💧 Water', period: '🌸 Period', bg: '👆 Blood check', note: '📝 Note' };
+  const TITLES = { mood: '🙂 How do you feel?', food: '🍽️ Food', rapid: '💧 Rapid insulin', basal: '💧 Long-acting insulin', meds: '💊 Meds & supplements', activity: '🏃 Activity', water: '💧 Water', period: '🌸 Period', bg: '👆 Blood check', note: '📝 Note' };
   function openSheet (name) {
     $('log-sheet').hidden = false;
     document.body.classList.add('sheet-open');
@@ -25,6 +25,7 @@
     if (name === 'bg') { $('bg-time').value = nowInput(); document.querySelectorAll('.unit-label').forEach((e) => { e.textContent = C.unitLabel(); }); }
     if (name === 'note') $('note-time').value = nowInput();
     if (name === 'meds') renderMeds();
+    if (name === 'mood') resetMood();
     $('log-sheet').querySelector('.sheet-card').scrollTop = 0;
   }
   function closeSheet () {
@@ -255,12 +256,56 @@
   resetForm(null);
 
   // =====================================================================
+  // How do you feel? (mood check-in)
+  // =====================================================================
+  const MOOD_WORDS = ['', 'Rough', 'Not great', 'Okay', 'Good', 'Great'];
+  let moodPick = 0;
+  function resetMood (preset) {
+    moodPick = preset || 0;
+    document.querySelectorAll('#mood-faces [data-mood]').forEach((b) => b.classList.toggle('on', Number(b.dataset.mood) === moodPick));
+    document.querySelectorAll('.mood-tags .chip').forEach((c) => c.classList.remove('on'));
+  }
+  document.querySelectorAll('#mood-faces [data-mood]').forEach((b) => b.addEventListener('click', () => {
+    moodPick = Number(b.dataset.mood);
+    document.querySelectorAll('#mood-faces [data-mood]').forEach((x) => x.classList.toggle('on', x === b));
+  }));
+  document.querySelectorAll('.mood-tags .chip').forEach((c) => c.addEventListener('click', () => c.classList.toggle('on')));
+  $('mood-save').addEventListener('click', async () => {
+    const tags = [...document.querySelectorAll('.mood-tags .chip.on')].map((c) => c.textContent.replace(/^\S+\s/, ''));
+    if (!moodPick && !tags.length) { C.showMsg('mood-msg', 'Pick a face or something that’s going on.', 'warn'); return; }
+    const notes = [moodPick ? MOOD_WORDS[moodPick] : '', tags.join(', ')].filter(Boolean).join(' · ');
+    if (await post({ eventType: 'Mood', mood: moodPick || undefined, moodTags: tags, notes: 'Feeling: ' + notes }, 'mood-msg', 'Thanks for checking in 💛')) {
+      try { localStorage.setItem('cgmhub.moodDismissed', new Date().toDateString()); } catch (e) { /* ignore */ }
+      setTimeout(closeSheet, 900);
+      renderMoodPrompt();
+    }
+  });
+  function moodToday () { return C.treatments.find((t) => t.eventType === 'Mood' && t.t >= startOfDay()); }
+  function renderMoodPrompt () {
+    let dismissed = '';
+    try { dismissed = localStorage.getItem('cgmhub.moodDismissed') || ''; } catch (e) { /* ignore */ }
+    $('mood-prompt').hidden = !!moodToday() || dismissed === new Date().toDateString() || !(C.S.url || C.S.demo);
+  }
+  document.querySelectorAll('[data-quickmood]').forEach((b) => b.addEventListener('click', () => {
+    C.go('log');
+    openSheet('mood');
+    resetMood(Number(b.dataset.quickmood));
+  }));
+  $('mood-dismiss').addEventListener('click', () => {
+    try { localStorage.setItem('cgmhub.moodDismissed', new Date().toDateString()); } catch (e) { /* ignore */ }
+    renderMoodPrompt();
+  });
+  C.hooks.render.push(renderMoodPrompt);
+
+  // =====================================================================
   // Tile statuses
   // =====================================================================
   function renderStatus () {
     const t0 = startOfDay();
     const today = C.treatments.filter((t) => t.t >= t0);
     const carbs = today.reduce((s, t) => s + t.carbs, 0);
+    const md = today.find((t) => t.eventType === 'Mood');
+    $('st-mood').textContent = md ? (md.notes || '').replace(/^Feeling: /, '') : 'Quick check-in';
     $('st-food').textContent = carbs ? Math.round(carbs) + ' g carbs today' : 'Search, scan, or by hand';
     $('st-rapid-name').textContent = C.S.rapidName || 'Rapid insulin';
     $('st-basal-name').textContent = C.S.basalName || 'Long-acting';
@@ -291,5 +336,5 @@
   }
   C.hooks.render.push(() => { if (!$('view-log').hidden) { renderStatus(); if (!document.querySelector('[data-logpanel="meds"]').hidden) renderMeds(); } });
 
-  window.CGMHubLogHub = { openSheet, closeSheet, meds };
+  window.CGMHubLogHub = { openSheet, closeSheet, meds, openMood: (n) => { C.go('log'); openSheet('mood'); resetMood(n); } };
 })();

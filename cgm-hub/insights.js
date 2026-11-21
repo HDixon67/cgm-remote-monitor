@@ -84,21 +84,27 @@
     }
     return out;
   }
-  async function loadData () {
-    const key = rangeDays + '|' + C.S.url + '|' + C.S.demo;
-    if (cache && cache.key === key && Date.now() - cache.at < 10 * MIN) return cache;
-    const since = Date.now() - rangeDays * DAY;
+  // load glucose (5-minute averages) + logged entries for any window [a, b)
+  const wcache = new Map();
+  async function loadData (a, b) {
+    if (a == null) { b = Date.now(); a = b - rangeDays * DAY; }
+    b = Math.min(b, Date.now());
+    const key = Math.round(a / MIN) + '|' + Math.round(b / (5 * MIN)) + '|' + C.S.url + '|' + C.S.demo;
+    const hit = wcache.get(key);
+    if (hit && Date.now() - hit.at < 10 * MIN) return hit;
     let ents, trs;
+    const inMemory = C.entries.length && C.entries[C.entries.length - 1].t <= a + 30 * MIN;
     if (C.S.demo) {
-      ents = C.entries.filter((e) => e.t >= since);
-      trs = C.normTreatments(demoTreatments(since));
+      ents = C.entries.filter((e) => e.t >= a && e.t < b);
+      trs = C.normTreatments(demoTreatments(a)).filter((t) => t.t < b);
     } else {
-      ents = rangeDays <= 14 && C.entries.length ? C.entries.filter((e) => e.t >= since)
-        : C.normEntries(await C.apiGet('/api/v1/entries/sgv.json', { 'find[date][$gte]': String(since), count: String(rangeDays * 1500) }));
-      trs = C.normTreatments(await C.apiGet('/api/v1/treatments.json', { 'find[created_at][$gte]': new Date(since).toISOString(), count: '5000' }));
+      ents = inMemory ? C.entries.filter((e) => e.t >= a && e.t < b)
+        : C.normEntries(await C.apiGet('/api/v1/entries/sgv.json', { 'find[date][$gte]': String(Math.round(a)), 'find[date][$lt]': String(Math.round(b)), count: String(Math.ceil((b - a) / DAY + 1) * 1500) }));
+      trs = C.normTreatments(await C.apiGet('/api/v1/treatments.json', { 'find[created_at][$gte]': new Date(a).toISOString(), 'find[created_at][$lt]': new Date(b).toISOString(), count: '5000' }));
     }
-    const fresh = { key, at: Date.now(), series: downsample(ents), trs };
-    if (fresh.series.length >= 12 * 24) cache = fresh; // don't cache an empty first load
+    const fresh = { key, at: Date.now(), a, b, ents, series: downsample(ents), trs };
+    if (fresh.series.length >= 12) wcache.set(key, fresh);
+    if (wcache.size > 30) wcache.delete(wcache.keys().next().value);
     return fresh;
   }
 
@@ -109,7 +115,7 @@
     if (series.length < 12 * 18) return out; // need most of a day of data
     const first = series[0].t, last = series[series.length - 1].t;
     out.days = Math.max(1, Math.round((last - first) / DAY));
-    const need = out.days <= 2 ? 1 : 2; // short ranges: one occurrence is worth mentioning
+    const need = 2; // a pattern has to happen at least twice (never a one-off)
     const off = Array.isArray(C.S.insOff) ? C.S.insOff : [];
     const add = (id, o) => { if (!off.includes(id)) out.insights.push(Object.assign({ id }, o)); };
 
@@ -157,7 +163,7 @@
       rises.push(b - a);
     }
     const medRise = median(rises);
-    if (rises.length >= Math.min(4, out.days) && medRise >= 30) {
+    if (rises.length >= 3 && medRise >= 30) {
       add('dawn', {
         sev: 2, icon: '🌅', title: 'Rising in the early morning',
         what: `On a typical morning you rise about ${mmolDiff(medRise)} between 3 AM and 7:30 AM without eating (${rises.length} mornings checked).`,
@@ -186,7 +192,7 @@
       const pk = median(list.map((m) => m.peakMin));
       const lowRate = list.filter((m) => m.lowAfter).length / list.length;
       out.meals.push({ slot, n: list.length, rise: r, peakMin: pk, lowRate });
-      if (list.length >= Math.min(3, out.days) && r >= 63) {
+      if (list.length >= 3 && r >= 63) {
         const fast = pk <= 75, slow = pk >= 120;
         add('mealspike', {
           slot, sev: 2, icon: '📈', title: `Big rises after ${SLOT[slot].replace(/^\S+\s/, '').toLowerCase()}`,
@@ -209,7 +215,7 @@
           care: true,
         });
       }
-      if (list.length >= Math.min(3, out.days) && lowRate >= 0.3) {
+      if (list.length >= 3 && lowRate >= 0.3) {
         add('meallows', {
           slot, sev: 3, icon: '⬇️', title: `Lows a few hours after ${SLOT[slot].replace(/^\S+\s/, '').toLowerCase()}`,
           what: `${Math.round(lowRate * 100)}% of your ${SLOT[slot].replace(/^\S+\s/, '').toLowerCase()} meals were followed by a low 2–5 hours later.`,
@@ -262,7 +268,7 @@
         unexplained++;
         i = lowerBound(series, p.t + 3 * HOUR); // skip ahead so one rise counts once
       }
-      if (unexplained >= need + 1) {
+      if (unexplained >= 3) {
         add('unlogged', {
           sev: 1, icon: '🔍', title: 'Rises with nothing logged',
           what: `${unexplained} times your glucose rose ${mmolDiff(63)} or more with no food or insulin logged around then.`,
@@ -498,25 +504,166 @@
     for (const p of series) { const d = new Date(p.t); bins[d.getHours() * 2 + (d.getMinutes() >= 30 ? 1 : 0)].push(p.mg); }
     out.agp = bins.map((b) => { const s = b.sort((x, y) => x - y); return s.length >= 3 ? { p10: pct(s, 0.1), p25: pct(s, 0.25), p50: pct(s, 0.5), p75: pct(s, 0.75), p90: pct(s, 0.9), n: s.length } : null; });
 
+    // --- 18. Mood & how you feel (needs 3+ check-in days with the same feeling)
+    const moodDays = {};
+    for (const t of trs) {
+      if (t.eventType !== 'Mood') continue;
+      const k = dayKey(t.t);
+      const md = moodDays[k] || (moodDays[k] = { mood: 0, tags: new Set() });
+      if (t.mood) md.mood = t.mood;
+      (t.moodTags || []).forEach((g) => md.tags.add(g));
+    }
+    const tirDay = {};
+    for (const p of series) { const k = dayKey(p.t); const o = tirDay[k] || (tirDay[k] = [0, 0]); o[1]++; if (p.mg >= L && p.mg <= H) o[0]++; }
+    const tirOfDays = (keys) => { let a = 0, b = 0; for (const k of keys) { const o = tirDay[k]; if (o && o[1] >= 144) { a += o[0]; b += o[1]; } } return b ? { tir: (a / b) * 100, n: keys.filter((k) => tirDay[k] && tirDay[k][1] >= 144).length } : null; };
+    const allTags = new Set();
+    Object.values(moodDays).forEach((m) => m.tags.forEach((g) => allTags.add(g)));
+    const moodFinds = [];
+    for (const tag of allTags) {
+      const withT = Object.keys(moodDays).filter((k) => moodDays[k].tags.has(tag));
+      const others = Object.keys(tirDay).filter((k) => !withT.includes(k));
+      const A = tirOfDays(withT), B = tirOfDays(others);
+      if (A && B && A.n >= 3 && B.n >= 3 && Math.abs(A.tir - B.tir) >= 12) moodFinds.push({ label: '“' + tag.toLowerCase() + '”', A, B });
+    }
+    const lowMood = Object.keys(moodDays).filter((k) => moodDays[k].mood && moodDays[k].mood <= 2);
+    const okMood = Object.keys(moodDays).filter((k) => moodDays[k].mood >= 3);
+    { const A = tirOfDays(lowMood), B = tirOfDays(okMood); if (A && B && A.n >= 3 && B.n >= 3 && Math.abs(A.tir - B.tir) >= 12) moodFinds.unshift({ label: 'rough or not great', A, B }); }
+    if (moodFinds.length) {
+      const f = moodFinds[0];
+      add('mood', {
+        sev: 1, icon: '🙂', title: 'How you feel and your glucose',
+        what: `On days you felt ${f.label}, you were in range ${Math.round(f.A.tir)}% of the time, vs ${Math.round(f.B.tir)}% on other days (${f.A.n} vs ${f.B.n} days).` + (moodFinds.length > 1 ? ' Also: ' + moodFinds.slice(1, 3).map((x) => `${x.label} days ${Math.round(x.A.tir)}% vs ${Math.round(x.B.tir)}%`).join('; ') + '.' : ''),
+        causes: ['Stress, poor sleep and illness release hormones that raise glucose and make insulin work less well', 'On hard days, routines (meal times, doses, checks) slip, which is very human', 'It can also go the other way: rough glucose days make you feel worse'],
+        tries: ['On rough days, aim for “good enough”: one small win (log one meal, drink water)', 'If “diabetes feels like a lot” keeps showing up, tell your care team. Diabetes distress is common and there is real help for it 💛'],
+      });
+    }
+
+    // --- occurrence dots (one per night/day) so you can see a pattern really repeats
+    const dayStarts = [];
+    for (let d = new Date(first).setHours(0, 0, 0, 0); d <= last; d += DAY) dayStarts.push(new Date(d).setHours(0, 0, 0, 0));
+    const dayLabel = (t) => new Date(t).toLocaleDateString([], { weekday: 'short', day: 'numeric' });
+    const dotsFor = (fn) => dayStarts.map((d0) => ({ label: dayLabel(d0), hit: fn(d0) }));
+    const inBlock = (d0, a, b) => windowPts(series, d0 + a * HOUR, d0 + b * HOUR - 1);
+    const DOTS = {
+      nightlows: (d0) => { const w = inBlock(d0, 0, 6); if (w.length < 36) return null; return realLows.some((r) => r.start >= d0 && r.start < d0 + 6 * HOUR); },
+      dawn: (d0) => { const a = valueNear(series, d0 + 3 * HOUR), b = valueNear(series, d0 + 7.5 * HOUR); if (a == null || b == null) return null; return b - a >= 30; },
+      longhigh: (d0) => { const w = inBlock(d0, 0, 24); if (w.length < 144) return null; return lh.some((r) => r.start >= d0 && r.start < d0 + DAY); },
+      rebound: (d0) => { const lows = realLows.filter((r) => r.start >= d0 && r.start < d0 + DAY); if (!lows.length) return false; return rebounds.some((r) => r.start >= d0 && r.start < d0 + DAY); },
+    };
+    const BLOCK_H = { 'Overnight': [0, 6], 'Morning': [6, 11], 'Afternoon': [11, 17], 'Evening': [17, 22], 'Late night': [22, 24] };
+    for (const ins of out.insights) {
+      let fn = DOTS[ins.id];
+      if (!fn && ins.block && (ins.id === 'toughhigh' || ins.id === 'lowblock')) {
+        const [a, b] = BLOCK_H[ins.block.replace(/^\S+\s/, '')] || [0, 0];
+        fn = (d0) => { const w = inBlock(d0, a, b); if (w.length < (b - a) * 6) return null; const share = w.filter((p) => (ins.id === 'toughhigh' ? p.mg > H : p.mg < L)).length / w.length; return ins.id === 'toughhigh' ? share >= 0.35 : share >= 0.08; }; // same thresholds as the pattern itself
+      }
+      if (!fn && ins.id === 'mealspike' && slots[ins.slot]) {
+        ins.dots = slots[ins.slot].map((m) => ({ label: dayLabel(m.t), hit: m.rise >= 63 }));
+      } else if (fn) ins.dots = dotsFor(fn);
+      if (ins.dots) {
+        const elig = ins.dots.filter((x) => x.hit !== null);
+        const hits = elig.filter((x) => x.hit).length;
+        ins.hits = hits;
+        ins.occ = `${hits} of ${elig.length} ${ins.id === 'mealspike' ? 'meals' : ins.id === 'nightlows' ? 'nights' : ins.id === 'dawn' ? 'mornings' : 'days'}`;
+      }
+      ins.experiment = experimentFor(ins);
+    }
     out.insights.sort((a, b) => b.sev - a.sev);
     return out;
   }
 
+  // ---------- experiments: one small, safe thing to try for a week ----------
+  function experimentFor (ins) {
+    const slot = ins.slot ? SLOT[ins.slot].replace(/^\S+\s/, '').toLowerCase() : 'meal';
+    const block = ins.block ? ins.block.replace(/^\S+\s/, '').toLowerCase() : 'that time';
+    const E = {
+      nightlows: 'For the next 3 nights, check before bed. If you’re under 7, have a small snack with protein. Then see if the overnight lows change. (Basal changes: with your diabetes team.)',
+      dawn: 'On 3 nights this week, finish dinner before 8 PM, then compare your 3–7 AM rise to other nights.',
+      mealspike: `For your next 5 ${slot}s, take a 10-minute walk right after eating and watch whether the spike gets smaller.`,
+      meallows: `For your next 3 ${slot}s, keep a small snack ready 2–3 hours later and note what you ate.`,
+      rebound: 'For your next 3 lows, use exactly 15 g of fast sugar, wait 15 minutes, then check again before eating more.',
+      stacked: 'For one week, check “insulin on board” on the Home screen before any correction.',
+      unlogged: 'For 3 days, log every snack and drink with carbs, even small ones.',
+      toughhigh: `On 4 days this week, move for 10 minutes during the ${block}.`,
+      lowblock: `This week, carry fast sugar during the ${block} and try a small snack just before it on 3 days.`,
+      lowtime: 'This week, add a quick note (Log → 📝) whenever you go low: what happened just before?',
+      variability: 'For one week, eat veggies or protein first at one meal a day.',
+      weekend: 'This weekend, keep meal times within an hour of your weekday times.',
+      foods: 'Next time you have one of these foods, double-check the carbs with a scan or search and walk after.',
+      longhigh: 'Next long high: drink water, check your pen needle and insulin, and add a note about anything unusual.',
+      nobolus: 'For one week, keep your pen where you eat and log the dose with the meal (Bolus → Log this).',
+      latebolus: 'For one week, make “pen out” the first thing you do when food arrives.',
+      exerciselow: 'After your next 3 workouts, have a carb + protein snack and check before bed.',
+      latedinner: 'On 3 nights, finish dinner by 8 PM and compare the next mornings.',
+      compression: 'For 3 nights, sleep on the side without your sensor, or place the next sensor on your less-slept-on arm.',
+      meds: 'Keep logging this every day for 2 more weeks so the pattern is clearer.',
+      mood: 'Check in each morning this week (it takes 5 seconds), and on rough days pick one small thing to do for yourself.',
+    };
+    return E[ins.id] || '';
+  }
+
+  function dotRow (dots) {
+    const row = el('div', 'dot-row');
+    for (const d of dots.slice(-21)) {
+      const s = el('span', 'dot ' + (d.hit === null ? 'na' : d.hit ? 'hit' : 'ok'));
+      s.title = d.label + (d.hit === null ? ': too few readings' : d.hit ? ': yes' : ': no');
+      row.appendChild(s);
+    }
+    return row;
+  }
+  // big "main pattern" card (also used by the morning brief)
+  function renderMainPattern (box, ins, periodLabel) {
+    const card = el('div', 'pattern-card sev-' + ins.sev);
+    card.appendChild(el('div', 'pt-kicker', '🔁 PATTERN · ' + (periodLabel || 'LAST 14 DAYS').toUpperCase()));
+    card.appendChild(el('div', 'pt-title', ins.icon + ' ' + ins.title));
+    card.appendChild(el('p', null, ins.what));
+    if (ins.dots) {
+      card.appendChild(dotRow(ins.dots));
+      card.appendChild(el('div', 'muted small', ins.occ + ' · ● yes  ○ no  · too few readings'));
+    }
+    if (ins.experiment) {
+      const ex = el('div', 'experiment');
+      ex.appendChild(el('div', 'ex-kicker', '🧪 EXPERIMENT'));
+      ex.appendChild(el('p', null, ins.experiment));
+      card.appendChild(ex);
+    }
+    const d = el('details'); d.appendChild(el('summary', null, 'Details'));
+    if (ins.causes.length) { d.appendChild(el('div', 'small b', '🤔 What might be causing it')); const ul = el('ul'); ins.causes.forEach((c) => ul.appendChild(el('li', null, c))); d.appendChild(ul); }
+    if (ins.tries.length) { d.appendChild(el('div', 'small b', '💡 Other ideas')); const ul = el('ul'); ins.tries.forEach((c) => ul.appendChild(el('li', null, c))); d.appendChild(ul); }
+    card.appendChild(d);
+    if (ins.care) card.appendChild(el('p', 'muted small', 'Anything involving insulin doses: check with your care team first.'));
+    box.appendChild(card);
+  }
+  function mainOf (insights) {
+    const cands = insights.filter((i) => i.sev > 0 && i.id !== 'goal' && i.id !== 'progress');
+    return cands.sort((a, b) => b.sev - a.sev || (b.hits || 0) - (a.hits || 0))[0] || null;
+  }
+
   // ---------- rendering ----------
-  function renderInsights (res) {
+  function renderInsights (res, periodLabel) {
     const box = $('ins-list');
     box.textContent = '';
+    if (res.quiet) { box.appendChild(el('p', 'muted', 'A pattern needs to happen at least twice, so look at a Week or Month.')); return; }
     if (!res.insights.length) {
-      box.appendChild(el('p', 'muted', res.days ? 'No strong patterns found in this period. 👍 Try a longer range, or keep logging meals and doses for richer insights.' : 'Not enough glucose data yet for this range.'));
+      box.appendChild(el('p', 'muted', res.days ? 'No repeating patterns in this period. 👍 Keep logging meals and doses for richer insights.' : 'Not enough glucose data yet for this period.'));
       return;
     }
-    for (const ins of res.insights) {
+    const main = mainOf(res.insights);
+    if (main) renderMainPattern(box, main, periodLabel);
+    const rest = res.insights.filter((i) => i !== main);
+    if (rest.length) box.appendChild(el('div', 'split-title more-h', main ? 'More patterns' : 'Patterns'));
+    for (const ins of rest) {
       const card = el('div', 'ins-card sev-' + ins.sev);
       const head = el('div', 'ins-head');
       head.appendChild(el('span', 'ins-ic', ins.icon));
       head.appendChild(el('b', null, ins.title));
       card.appendChild(head);
       card.appendChild(el('p', null, ins.what));
+      if (ins.dots) { card.appendChild(dotRow(ins.dots)); card.appendChild(el('div', 'muted small', ins.occ)); }
+      if (ins.experiment) {
+        const d = el('details'); d.appendChild(el('summary', null, '🧪 Experiment'));
+        d.appendChild(el('p', 'small', ins.experiment)); card.appendChild(d);
+      }
       if (ins.causes.length) {
         const d = el('details'); d.appendChild(el('summary', null, '🤔 What might be causing it'));
         const ul = el('ul'); ins.causes.forEach((c) => ul.appendChild(el('li', null, c))); d.appendChild(ul); card.appendChild(d);
@@ -659,36 +806,22 @@
     }
   }
 
-  async function renderAllTrends () {
-    if (loading) return;
-    loading = true;
-    $('ins-status').textContent = 'Looking for patterns…';
-    try {
-      const d = await loadData();
-      const res = analyze(d.series, d.trs);
-      lastDays = res.days;
-      $('ins-status').textContent = res.days ? `Based on ${res.days} day${res.days === 1 ? '' : 's'} of glucose data` + (d.trs.length ? ` and ${d.trs.length} logged entries.` : '. Log meals and doses for more insights.') : '';
-      renderInsights(res); renderAGP(res); renderBlocks(res); renderMeals(res);
-    } catch (e) {
-      $('ins-status').textContent = '⚠️ ' + e.message;
-    } finally { loading = false; }
+  async function renderWindow (a, b, periodLabel) {
+    const d = await loadData(a, b);
+    const res = analyze(d.series, d.trs, { a, b });
+    const days = Math.max(1, Math.round((Math.min(b, Date.now()) - a) / DAY));
+    $('ins-status').textContent = days < 3 ? 'Patterns need several days. Switch to Week or Month to see them.'
+      : res.days ? `Looking at ${periodLabel || res.days + ' days'}: ${res.days} day${res.days === 1 ? '' : 's'} of glucose data` + (d.trs.length ? `, ${d.trs.length} logged entries.` : '. Log meals and doses for more insights.') : 'Not enough glucose data for this period.';
+    renderInsights(days < 3 ? { insights: [], days: res.days, quiet: true } : res, periodLabel);
+    renderAGP(res); renderBlocks(res); renderMeals(res);
+    return { d, res };
   }
-
-  document.querySelectorAll('#trend-range button').forEach((b) => b.addEventListener('click', () => {
-    rangeDays = Number(b.dataset.days);
-    document.querySelectorAll('#trend-range button').forEach((x) => x.classList.toggle('on', x === b));
-    renderAllTrends();
-  }));
   const aw = $('agp-wrap');
   aw.addEventListener('pointermove', agpHover);
   aw.addEventListener('pointerdown', agpHover);
   aw.addEventListener('pointerleave', () => { $('agp-tip').hidden = true; $('agp').querySelectorAll('.cross, .cross-dot').forEach((n) => n.remove()); });
 
-  let lastDays = 0;
-  C.hooks.view.push((view) => { if (view === 'trends') renderAllTrends(); });
-  // data may arrive after the Trends tab opened: re-run once it does
-  C.hooks.render.push(() => { if (!$('view-trends').hidden && !lastDays && C.entries.length) renderAllTrends(); });
-  window.addEventListener('cgmhub:data-imported', () => { cache = null; });
+  window.addEventListener('cgmhub:data-imported', () => { wcache.clear(); });
 
   // ---------- settings: choose insights & trend sections ----------
   const TYPES = [
@@ -697,7 +830,7 @@
     ['lowblock', '⚠️ Lows in one time block'], ['lowtime', '🔻 Too much time low'], ['variability', '〰️ Big ups and downs'], ['weekend', '🎉 Weekday vs weekend'],
     ['foods', '🍽️ Foods that spike you'], ['meds', '💊 Meds & supplements'], ['progress', '🌟 Weekly progress'], ['goal', '🎯 Time-in-range goal'],
     ['compression', '🛏️ Compression lows'], ['longhigh', '⏳ Long highs'], ['nobolus', '❓ Meals without a bolus'], ['latebolus', '⏰ Late boluses'],
-    ['exerciselow', '🏃 Lows after exercise'], ['latedinner', '🌜 Late dinners'],
+    ['exerciselow', '🏃 Lows after exercise'], ['latedinner', '🌜 Late dinners'], ['mood', '🙂 Mood & glucose'],
   ];
   const SECTIONS = [['agp', 'Your typical day', 'agp-wrap'], ['tod', 'Time of day', 'tod-rows'], ['meals', 'Meals & foods', 'meal-rows'], ['cycle', 'Cycle (your cycle + glucose by phase)', 'cycle-stats', 'phase-rows']];
   function applySections () {
@@ -732,15 +865,12 @@
   let latestCache = null;
   async function latest () {
     if (latestCache && Date.now() - latestCache.at < 30 * MIN) return latestCache.res;
-    const keep = rangeDays; rangeDays = 14;
-    try {
-      const d = await loadData();
-      const res = analyze(d.series, d.trs);
-      if (res.days) latestCache = { at: Date.now(), res };
-      return res;
-    } finally { rangeDays = keep; }
+    const d = await loadData(Date.now() - 14 * DAY, Date.now());
+    const res = analyze(d.series, d.trs);
+    if (res.days) latestCache = { at: Date.now(), res };
+    return res;
   }
 
   // exposed for tests and other modules
-  window.CGMHubInsights = { analyze, downsample, latest, TYPES };
+  window.CGMHubInsights = { analyze, downsample, latest, TYPES, loadData, renderWindow, renderMainPattern, mainOf };
 })();

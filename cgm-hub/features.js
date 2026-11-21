@@ -93,39 +93,95 @@
     $('basket-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
+  // Food search: USDA FoodData Central (Open Food Facts' word search no longer works from web apps).
+  // Values in search results are per 100 g. A free personal key (Settings) avoids the tiny shared DEMO_KEY limit.
+  const NUT = { carbs: '205', kcal: '208', kcalAtwater: '957', fat: '204', protein: '203', fiber: '291' };
+  const titleCase = (s) => String(s || '').toLowerCase().replace(/(^|[\s,(/-])\S/g, (m) => m.toUpperCase());
+  function fdcFood (f) {
+    const n = {};
+    for (const x of f.foodNutrients || []) { const num = String(x.nutrientNumber || ''); if (n[num] == null && typeof x.value === 'number') n[num] = x.value; }
+    if (n[NUT.carbs] == null) return null;
+    let grams = 100, servingLabel = '';
+    const unit = String(f.servingSizeUnit || '').toLowerCase();
+    if (f.servingSize > 0 && (unit === 'g' || unit === 'grm' || unit === 'ml' || unit === 'mlt')) { grams = Math.round(f.servingSize); servingLabel = (f.householdServingFullText ? f.householdServingFullText + ' · ' : '') + grams + ' ' + (unit.startsWith('m') ? 'ml' : 'g'); }
+    else if (Array.isArray(f.foodMeasures) && f.foodMeasures.length) {
+      const m = f.foodMeasures.find((x) => x.gramWeight > 0 && x.disseminationText && !/quantity not specified/i.test(x.disseminationText)) || f.foodMeasures.find((x) => x.gramWeight > 0);
+      if (m) { grams = Math.round(m.gramWeight); servingLabel = (m.disseminationText ? m.disseminationText + ' · ' : '') + grams + ' g'; }
+    }
+    return {
+      name: f.dataType === 'Branded' ? titleCase(f.description) : titleCase(f.description).replace(/, Raw$/, ''),
+      brand: f.dataType === 'Branded' ? titleCase(f.brandName || f.brandOwner || '') : '',
+      per100: Math.round(n[NUT.carbs] * 10) / 10,
+      grams, servingLabel,
+      m: { kcal: n[NUT.kcal] ?? n[NUT.kcalAtwater] ?? 0, fat: n[NUT.fat] || 0, protein: n[NUT.protein] || 0, fiber: n[NUT.fiber] || 0 },
+      branded: f.dataType === 'Branded',
+    };
+  }
   async function searchFood (q) {
     const ul = $('food-results');
     ul.textContent = '';
     ul.appendChild(el('li', 'muted', 'Searching…'));
-    const url = 'https://world.openfoodfacts.org/cgi/search.pl?' + new URLSearchParams({
-      search_terms: q, search_simple: '1', action: 'process', json: '1', page_size: '20',
-      fields: 'code,product_name,brands,nutriments,serving_quantity,serving_size',
+    const key = (C.S.fdcKey || '').trim() || 'DEMO_KEY';
+    const url = 'https://api.nal.usda.gov/fdc/v1/foods/search?' + new URLSearchParams({
+      api_key: key, query: q, pageSize: '25', dataType: 'Foundation,SR Legacy,Survey (FNDDS),Branded',
     });
     try {
       const res = await fetch(url);
-      if (!res.ok) throw new Error('Food search is busy (' + res.status + '). Try again in a minute.');
+      if (res.status === 429 || res.status === 403) {
+        throw new Error(key === 'DEMO_KEY'
+          ? 'The shared food-search key is busy. Add your own free key in Settings → 🍎 Food search (takes a minute), or add the food by hand.'
+          : 'Food search said no (' + res.status + '). Check your key in Settings → 🍎 Food search.');
+      }
+      if (!res.ok) throw new Error('Food search is having trouble (' + res.status + '). Try again in a minute.');
       const data = await res.json();
-      const items = (data.products || [])
-        .filter((p) => p.product_name && p.nutriments && p.nutriments.carbohydrates_100g != null)
-        .slice(0, 12);
+      // plain foods first, then brands; drop duplicates
+      const seen = new Set();
+      const items = (data.foods || []).map(fdcFood).filter((x) => x && !seen.has(x.name + x.brand) && seen.add(x.name + x.brand))
+        .sort((a, b) => a.branded - b.branded).slice(0, 15);
       ul.textContent = '';
-      if (!items.length) { ul.appendChild(el('li', 'muted', 'No matches with carb info. Try other words, or add it by hand below.')); return; }
-      for (const p of items) {
-        const per100 = Math.round(Number(p.nutriments.carbohydrates_100g) * 10) / 10;
-        const serving = Number(p.serving_quantity) > 0 ? Math.round(Number(p.serving_quantity)) : 100;
+      if (!items.length) { ul.appendChild(el('li', 'muted', 'No matches with carb info. Try simpler words (e.g. “tortilla”), scan the barcode, or add it by hand.')); return; }
+      for (const f of items) {
         const li = el('li');
         const mid = el('div', 'grow');
-        mid.appendChild(el('div', 'title', p.product_name));
-        mid.appendChild(el('div', 'muted small', [p.brands && p.brands.split(',')[0], per100 + ' g carbs / 100 g', p.serving_size ? 'serving ' + p.serving_size : ''].filter(Boolean).join(' · ')));
+        mid.appendChild(el('div', 'title', f.name));
+        mid.appendChild(el('div', 'muted small', [f.brand, f.per100 + ' g carbs / 100 g', f.servingLabel].filter(Boolean).join(' · ')));
         li.appendChild(mid);
         const add = el('button', null, '+ Add'); add.type = 'button';
-        add.addEventListener('click', () => addToBasket({ name: p.product_name, grams: serving, per100, carbs: (per100 * serving) / 100, m: macros100(p.nutriments) }));
+        add.addEventListener('click', () => addToBasket({ name: f.name, grams: f.grams, per100: f.per100, carbs: (f.per100 * f.grams) / 100, m: f.m }));
         li.appendChild(add);
         ul.appendChild(li);
       }
+      ul.appendChild(el('li', 'muted small', 'Source: USDA FoodData Central. Check the grams match what you ate.'));
     } catch (e) {
       ul.textContent = '';
-      ul.appendChild(el('li', 'muted', e.message && /busy/.test(e.message) ? e.message : 'Couldn’t reach the food database. Check your connection, or add it by hand below.'));
+      ul.appendChild(el('li', 'muted', /key|busy|trouble|said no/.test(e.message) ? e.message : 'Couldn’t reach the food database. Check your connection, or add it by hand.'));
+    }
+  }
+
+  // ---------- recent foods (one tap) ----------
+  const RECENT_KEY = 'cgmhub.recentfoods.v1';
+  const recents = () => { try { return JSON.parse(localStorage.getItem(RECENT_KEY)) || []; } catch (e) { return []; } };
+  function rememberFoods (items) {
+    let list = recents();
+    for (const it of items) {
+      if (!it.name) continue;
+      list = [Object.assign({}, it, { at: Date.now() })].concat(list.filter((x) => x.name.toLowerCase() !== it.name.toLowerCase()));
+    }
+    try { localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, 12))); } catch (e) { /* ignore */ }
+    renderRecents();
+  }
+  function renderRecents () {
+    const box = $('recent-list');
+    if (!box) return;
+    box.textContent = '';
+    const list = recents();
+    $('recent-wrap').hidden = !list.length;
+    for (const it of list) {
+      const chip = el('button', 'chip', it.name);
+      chip.type = 'button';
+      chip.appendChild(el('small', null, Math.round(it.carbs) + 'g'));
+      chip.addEventListener('click', () => addToBasket(Object.assign({}, it)));
+      box.appendChild(chip);
     }
   }
   // ---------- barcode scanning ----------
@@ -237,6 +293,11 @@
     if (m.fat) t.fat = Math.round(m.fat);
     if (m.protein) t.protein = Math.round(m.protein);
     if (m.fiber) t.fiber = Math.round(m.fiber);
+  });
+  C.hooks.beforeLogSave.push((t) => {
+    if (!t.carbs) return;
+    if (basket.length) rememberFoods(basket.map((x) => ({ name: x.name, grams: x.grams, per100: x.per100, carbs: x.carbs, m: x.m })));
+    else if (t.notes) rememberFoods([{ name: t.notes, grams: null, per100: null, carbs: t.carbs }]);
   });
   C.hooks.logSaved.push(() => { basket = []; renderBasket(); });
 
@@ -550,5 +611,8 @@
     if (view === 'trends') { renderTrends(); if (C.periods.length) historyTried = true; buildHistory(); }
   });
   renderFavs();
+  renderRecents();
+  $('set-fdc').value = C.S.fdcKey || '';
+  $('set-fdc-save').addEventListener('click', () => { C.S.fdcKey = $('set-fdc').value.trim(); C.saveSettings(); C.showMsg('fdc-msg', C.S.fdcKey ? '✅ Saved. Food search will use your key.' : 'Cleared. Using the shared key.', 'ok'); });
   window.CGMHubFeatures = { showLogTab, cycleModel, phaseAt, renderPeriodPanel, phaseName };
 })();

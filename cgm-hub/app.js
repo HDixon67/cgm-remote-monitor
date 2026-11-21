@@ -137,6 +137,7 @@
       medName: t.medName || '', medDose: t.medDose || '', medType: t.medType || '',
       fat: Number(t.fat) || 0, protein: Number(t.protein) || 0, fiber: Number(t.fiber) || 0, calories: Number(t.calories) || 0,
       water: Number(t.water) || 0, duration: Number(t.duration) || 0,
+      mood: Number(t.mood) || 0, moodTags: Array.isArray(t.moodTags) ? t.moodTags : [],
     }))
       .filter((t) => !isNaN(t.t) && t.eventType !== 'CGMHub Settings') // reminder settings are stored as a treatment
       .sort((a, b) => b.t - a.t);
@@ -429,6 +430,11 @@
     return t.eventType || 'Entry';
   }
   function iconFor (t) {
+    if (t.eventType === 'Mood') {
+      const ic = el('span', 'ic other', ['😐', '😫', '🙁', '😐', '🙂', '😄'][t.mood || 0]);
+      ic.setAttribute('aria-hidden', 'true');
+      return ic;
+    }
     if (t.eventType === 'Water' || t.eventType === 'Exercise') {
       const ic = el('span', 'ic other', t.eventType === 'Water' ? '💧' : '🏃');
       ic.setAttribute('aria-hidden', 'true');
