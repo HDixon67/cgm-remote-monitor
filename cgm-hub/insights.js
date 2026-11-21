@@ -78,7 +78,8 @@
       [['breakfast', 8], ['lunch', 12.5], ['dinner', 18.5]].forEach(([slot, h], k) => {
         const [name, carbs, ins] = foods[slot][(i + k) % 3];
         const t = d + h * HOUR;
-        if (t < Date.now() && t >= from) out.push({ created_at: new Date(t).toISOString(), carbs, insulin: ins, eventType: 'Meal Bolus', notes: name, enteredBy: 'demo' });
+        const nutrients = { carbs: carbs + 3, fiber: Math.round(carbs * 0.06 * 10) / 10, protein: 14, fat: 11, satFat: 4.5, sodium: 820, kcal: (carbs + 3) * 4 + 14 * 4 + 11 * 9, calcium: 140, iron: 1.8, potassium: 380, vitD: 0.8, vitC: 6, magnesium: 40 };
+        if (t < Date.now() && t >= from) out.push({ created_at: new Date(t).toISOString(), carbs, insulin: ins, eventType: 'Meal Bolus', notes: name, enteredBy: 'demo', nutrients, totalCarbs: carbs + 3 });
       });
       if (d + 9 * HOUR < Date.now()) out.push({ created_at: new Date(d + 9 * HOUR).toISOString(), eventType: 'Medication', notes: 'Vitamin D 1000 IU', medName: 'Vitamin D', medDose: '1000 IU', medType: 'supplement', enteredBy: 'demo' });
     }

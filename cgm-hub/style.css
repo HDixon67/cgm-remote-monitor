@@ -496,3 +496,32 @@ svg.hist-chart { width: 100%; height: 220px; display: block; margin-top: 10px; }
 .brief .experiment { background: rgba(255,255,255,.12); }
 .brief .dot.ok { border-color: rgba(255,255,255,.7); }
 .brief details summary { color: #fff; }
+
+/* ---------- portions, net carbs, nutrition facts ---------- */
+.basket li.bk-item { display: block; }
+.bk-head { display: flex; align-items: flex-start; gap: 10px; }
+.bk-head .grow { flex: 1; min-width: 0; }
+.bk-ctl { display: flex; gap: 8px; margin-top: 8px; }
+.bk-ctl input { width: 84px; flex: none; padding: 10px; font-size: 1rem; }
+.bk-ctl select { flex: 1; min-width: 0; padding: 10px; font-size: .95rem; }
+.bk-facts summary, .meal-facts summary { font-size: .88rem; }
+.meal-facts { margin-top: 8px; }
+.facts { border: 2px solid var(--text-2); border-radius: 12px; padding: 10px 12px; margin: 8px 0; font-size: .92rem; }
+.facts-kcal { display: flex; justify-content: space-between; font-size: 1.25rem; font-weight: 700; border-bottom: 4px solid var(--text-2); padding-bottom: 4px; margin-bottom: 4px; }
+.facts-row { display: flex; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--line); }
+.facts-row span:first-child { flex: 1; }
+.facts-row.indent span:first-child { padding-left: 14px; }
+.facts-row.net { color: var(--carb); }
+.facts-dv { width: 42px; text-align: right; }
+.facts-sep { border-top: 4px solid var(--text-2); margin: 4px 0; }
+.nut-list { display: grid; gap: 10px; margin: 8px 0; }
+.nut-top { display: flex; justify-content: space-between; gap: 8px; font-size: .92rem; }
+.nut-bar { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; margin: 4px 0 2px; }
+.nut-bar span { display: block; height: 100%; background: var(--in); border-radius: 4px; }
+.nut-row.low .nut-bar span { background: var(--high); }
+.nut-row.high .nut-bar span { background: var(--low); }
+.nut-tip { border-radius: 14px; padding: 12px; margin-top: 12px; background: color-mix(in srgb, var(--in) 12%, var(--card)); }
+.nut-tip.high { background: color-mix(in srgb, var(--high) 12%, var(--card)); }
+.nut-tip p { margin: 8px 0; }
+.block { display: block; }
+.nut-field span { font-size: .8rem; }
