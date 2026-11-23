@@ -1,0 +1,15 @@
+{
+  "name": "cgm-hub-android",
+  "private": true,
+  "description": "Android wrapper for CGM Hub (loads the web app, adds Health Connect)",
+  "scripts": {
+    "sync": "cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.6.2",
+    "@capacitor/core": "8.6.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.6.2"
+  }
+}

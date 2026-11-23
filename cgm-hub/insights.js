@@ -110,7 +110,11 @@
   }
 
   // ---------- analysis ----------
-  function analyze (series, trs) {
+  function analyze (series, trs, opts) {
+    opts = opts || {};
+    const health = opts.health || [];
+    // workouts tracked by the watch count as exercise too
+    trs = trs.concat(health.flatMap((s) => (s.exercise || []).map((e) => ({ t: e.start, eventType: 'Exercise', duration: e.min, notes: e.title || 'Workout', kind: 'dose', insulin: 0, carbs: 0 }))));
     const L = lo(), H = hi();
     const out = { insights: [], meals: [], blocks: [], agp: [], days: 0 };
     if (series.length < 12 * 18) return out; // need most of a day of data
@@ -539,6 +543,44 @@
       });
     }
 
+    // --- 19. Steps and sleep (Health Connect)
+    if (health.length) {
+      const tirByDay = {};
+      for (const p of series) { const k = dayKey(p.t); const o = tirByDay[k] || (tirByDay[k] = [0, 0]); o[1]++; if (p.mg >= L && p.mg <= H) o[0]++; }
+      const tirOf = (k) => (tirByDay[k] && tirByDay[k][1] >= 144 ? tirByDay[k][0] / tirByDay[k][1] * 100 : null);
+      const withSteps = health.filter((s) => s.steps > 0 && tirOf(dayKey(s.t)) != null);
+      if (withSteps.length >= 6) {
+        const sorted = withSteps.map((s) => s.steps).sort((a, b) => a - b);
+        const mid = sorted[Math.floor(sorted.length / 2)];
+        const hi = withSteps.filter((s) => s.steps >= mid), loD = withSteps.filter((s) => s.steps < mid);
+        const avgT = (arr) => arr.reduce((a, s) => a + tirOf(dayKey(s.t)), 0) / arr.length;
+        if (hi.length >= 3 && loD.length >= 3) {
+          const diff = avgT(hi) - avgT(loD);
+          const cut = Math.round(mid / 500) * 500;
+          if (Math.abs(diff) >= 8) add('steps', {
+            sev: diff > 0 ? 1 : 2, icon: '👟', title: diff > 0 ? 'More steps, more time in range' : 'Lower time in range on active days',
+            what: `On days with ${cut.toLocaleString()}+ steps you were in range ${Math.round(avgT(hi))}% of the time, vs ${Math.round(avgT(loD))}% on quieter days (${hi.length} vs ${loD.length} days).`,
+            causes: diff > 0 ? ['Moving helps muscles use glucose, with or without extra insulin', 'Active days may also have more regular meals'] : ['Activity can cause lows (and over-treated lows can rebound)', 'Intense exercise can raise glucose for a while (adrenaline)'],
+            tries: diff > 0 ? ['Short walks after meals are a great way to add steps', 'Try the steps quest on quieter days'] : ['Carry fast sugar on active days', 'Check before and after longer workouts', 'Ask your care team about adjusting doses on very active days'],
+            care: diff <= 0,
+          });
+        }
+      }
+      const nights = health.filter((s) => s.sleepMin > 0);
+      const morning = (s) => { const w = windowPts(series, s.d0 + 6 * HOUR, s.d0 + 10 * HOUR); return w.length >= 12 ? w.reduce((a, p) => a + p.mg, 0) / w.length : null; };
+      const shortN = nights.filter((s) => s.sleepMin < 360 && morning(s) != null), goodN = nights.filter((s) => s.sleepMin >= 420 && morning(s) != null);
+      if (shortN.length >= 3 && goodN.length >= 3) {
+        const avgM = (arr) => arr.reduce((a, s) => a + morning(s), 0) / arr.length;
+        const diff = avgM(shortN) - avgM(goodN);
+        if (diff >= 14) add('sleep', {
+          sev: 1, icon: '😴', title: 'Short sleep → higher mornings',
+          what: `After nights under 6 hours, your 6–10 AM glucose averaged ${mmolDiff(diff)} higher than after 7+ hour nights (${shortN.length} vs ${goodN.length} nights).`,
+          causes: ['Short sleep raises stress hormones and makes insulin work less well the next day', 'Late nights often come with late snacks'],
+          tries: ['Aim for a consistent bedtime on a few nights and compare', 'Be a little extra careful with breakfast after a short night'],
+        });
+      }
+    }
+
     // --- occurrence dots (one per night/day) so you can see a pattern really repeats
     const dayStarts = [];
     for (let d = new Date(first).setHours(0, 0, 0, 0); d <= last; d += DAY) dayStarts.push(new Date(d).setHours(0, 0, 0, 0));
@@ -598,6 +640,8 @@
       latedinner: 'Each day this week, finish dinner by 8 PM if you can and compare the next mornings.',
       compression: 'Each night this week, sleep on the side without your sensor (or put your next sensor on your less-slept-on arm).',
       meds: 'Keep logging this every day for 2 more weeks so the pattern is clearer.',
+      steps: 'Each day this week, add a 10-minute walk (after a meal is best) and watch your time in range.',
+      sleep: 'Each night this week, aim to be in bed 30 minutes earlier, then compare your mornings.',
       mood: 'Check in each morning this week (it takes 5 seconds), and on rough days pick one small thing to do for yourself.',
     };
     return E[ins.id] || '';
@@ -821,9 +865,11 @@
 
   async function renderWindow (a, b, periodLabel) {
     const d = await loadData(a, b);
-    const res = analyze(d.series, d.trs, { a, b });
+    let health = [];
+    try { health = window.CGMHubHealth ? await window.CGMHubHealth.load(a, b) : []; } catch (e) { /* no health data */ }
+    const res = analyze(d.series, d.trs, { a, b, health });
     const days = Math.max(1, Math.round((Math.min(b, Date.now()) - a) / DAY));
-    $('ins-status').textContent = days < 3 ? 'Patterns need several days. Switch to Week or Month to see them.'
+    $('ins-status').textContent = days < 3 ? (periodLabel === 'this day' ? 'Patterns need several days. Switch to Week or Month to see them.' : `Only ${days} day${days === 1 ? '' : 's'} so far in this period. Tap ‹ for the previous one, or try Month.`)
       : res.days ? `Looking at ${periodLabel || res.days + ' days'}: ${res.days} day${res.days === 1 ? '' : 's'} of glucose data` + (d.trs.length ? `, ${d.trs.length} logged entries.` : '. Log meals and doses for more insights.') : 'Not enough glucose data for this period.';
     renderInsights(days < 3 ? { insights: [], days: res.days, quiet: true } : res, periodLabel);
     renderAGP(res); renderBlocks(res); renderMeals(res);
@@ -843,7 +889,7 @@
     ['lowblock', '⚠️ Lows in one time block'], ['lowtime', '🔻 Too much time low'], ['variability', '〰️ Big ups and downs'], ['weekend', '🎉 Weekday vs weekend'],
     ['foods', '🍽️ Foods that spike you'], ['meds', '💊 Meds & supplements'], ['progress', '🌟 Weekly progress'], ['goal', '🎯 Time-in-range goal'],
     ['compression', '🛏️ Compression lows'], ['longhigh', '⏳ Long highs'], ['nobolus', '❓ Meals without a bolus'], ['latebolus', '⏰ Late boluses'],
-    ['exerciselow', '🏃 Lows after exercise'], ['latedinner', '🌜 Late dinners'], ['mood', '🙂 Mood & glucose'],
+    ['exerciselow', '🏃 Lows after exercise'], ['latedinner', '🌜 Late dinners'], ['mood', '🙂 Mood & glucose'], ['steps', '👟 Steps & glucose'], ['sleep', '😴 Sleep & glucose'],
   ];
   const SECTIONS = [['agp', 'Your typical day', 'agp-wrap'], ['tod', 'Time of day', 'tod-rows'], ['meals', 'Meals & foods', 'meal-rows'], ['cycle', 'Cycle (your cycle + glucose by phase)', 'cycle-stats', 'phase-rows']];
   function applySections () {
@@ -879,7 +925,9 @@
   async function latest () {
     if (latestCache && Date.now() - latestCache.at < 30 * MIN) return latestCache.res;
     const d = await loadData(Date.now() - 14 * DAY, Date.now());
-    const res = analyze(d.series, d.trs);
+    let health = [];
+    try { health = window.CGMHubHealth ? await window.CGMHubHealth.load(Date.now() - 14 * DAY, Date.now()) : []; } catch (e) { /* no health data */ }
+    const res = analyze(d.series, d.trs, { health });
     if (res.days) latestCache = { at: Date.now(), res };
     return res;
   }

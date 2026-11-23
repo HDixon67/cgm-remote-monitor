@@ -100,6 +100,19 @@
     sleepside: { icon: '🛏️', text: 'Sleep on your non-sensor side tonight', manual: true, insight: true },
     routine: { icon: '🗓️', text: 'Eat at your usual weekday times today', manual: true, insight: true },
   };
+  // steps quest (Health Connect): goal = your recent average + 15%, rounded to 500
+  function stepGoal () {
+    const HL = window.CGMHubHealth;
+    const days = HL ? HL.cachedRange(keyToTime(todayKey()) - 7 * DAY, keyToTime(todayKey())).filter((s) => s.steps > 0) : [];
+    if (days.length < 3) return null;
+    const avg = days.reduce((a, s) => a + s.steps, 0) / days.length;
+    return Math.max(3000, Math.round((avg * 1.15) / 500) * 500);
+  }
+  QUESTS.steps = {
+    icon: '👟', text: (p, k) => `Walk ${(((G.quests[k || todayKey()] || {}).stepGoal) || 6000).toLocaleString()} steps today`,
+    needs: () => !!stepGoal(),
+    auto: (d, k) => { const goal = (G.quests[k] || {}).stepGoal || 6000; const s = window.CGMHubHealth && window.CGMHubHealth.cachedDay(k); return [s ? s.steps || 0 : 0, goal]; },
+  };
   // nutrient quest: target comes from your own last-7-days averages (see pickNutrient)
   QUESTS.nutrient = {
     icon: '🥗', special: true,
@@ -175,7 +188,7 @@
     const wantAuto = Math.max(0, 3 - ids.length - (hasManual ? 0 : 1)); // always one tap-to-finish quest
     ids.push(...pick(auto, Math.min(wantAuto, 3 - ids.length), seed));
     ids.push(...pick(manual, 3 - ids.length, seed ^ 0x9e3779b9));
-    G.quests[k] = { ids, why, nut, done: (G.quests[k] && G.quests[k].done) || [] };
+    G.quests[k] = { ids, why, nut, stepGoal: ids.includes('steps') ? stepGoal() : undefined, done: (G.quests[k] && G.quests[k].done) || [] };
     save();
     return ids;
   }
@@ -439,12 +452,12 @@
       row.appendChild(el('span', 'q-ic', q.done ? '✅' : def.icon));
       const mid = el('div', 'grow');
       const qp = (G.quests[todayKey()] || {}).nut;
-      mid.appendChild(el('div', 'q-text', typeof def.text === 'function' ? def.text(qp) : def.text));
+      mid.appendChild(el('div', 'q-text', typeof def.text === 'function' ? def.text(qp, todayKey()) : def.text));
       const why = ((G.quests[todayKey()] || {}).why || {})[q.id];
       if (why) mid.appendChild(el('div', 'q-why', q.id === 'nutrient' ? why : '💡 From your insights: ' + why));
       if (!def.manual) {
         const b = el('div', 'bar q'); const f = el('span'); f.style.width = (q.prog / q.goal) * 100 + '%'; b.appendChild(f); mid.appendChild(b);
-        const un = q.id === 'nutrient' && qp ? ' ' + qp.unit : (def.unit || '');
+        const un = q.id === 'nutrient' && qp ? ' ' + qp.unit : q.id === 'steps' ? ' steps' : (def.unit || '');
         mid.appendChild(el('div', 'muted small', q.done ? 'Done! +30 XP' : q.id === 'nutrient' && qp && qp.kind === 'max' ? 'checks itself after 8 PM' : `${q.prog}${un} / ${q.goal}${un} · checks itself`));
       } else mid.appendChild(el('div', 'muted small', q.done ? 'Done! +30 XP' : 'Tap “Done” when you’ve done it'));
       row.appendChild(mid);

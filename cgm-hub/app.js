@@ -140,7 +140,7 @@
       mood: Number(t.mood) || 0, moodTags: Array.isArray(t.moodTags) ? t.moodTags : [],
       nutrients: t.nutrients && typeof t.nutrients === 'object' ? t.nutrients : null, totalCarbs: Number(t.totalCarbs) || 0,
     }))
-      .filter((t) => !isNaN(t.t) && t.eventType !== 'CGMHub Settings') // reminder settings are stored as a treatment
+      .filter((t) => !isNaN(t.t) && t.eventType !== 'CGMHub Settings' && t.eventType !== 'Health Summary') // settings + daily health data are read separately
       .sort((a, b) => b.t - a.t);
   }
 
