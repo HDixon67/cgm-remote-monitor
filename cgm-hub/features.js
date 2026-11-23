@@ -74,77 +74,173 @@
     const total = basketTotal();
     $('log-carbs').value = basket.length ? total : $('log-carbs').value;
     if (basket.length) $('log-note').value = basket.map((x) => x.name).join(' + ').slice(0, 140);
+    if (window.CGMHubDose) window.CGMHubDose.update('food');
   }
-  function carbLine (x) {
-    const net = Math.max(0, (x.totalCarbs || 0) - (x.fiberG || 0));
-    return N().carbMode() === 'net'
-      ? `Net ${Math.round(net)} g` + (x.fiberG ? ` (${Math.round(x.totalCarbs)} carbs − ${Math.round(x.fiberG * 10) / 10} fibre)` : '')
-      : `${Math.round(x.totalCarbs)} g carbs` + (x.fiberG ? ` · net ${Math.round(net)} g` : '');
-  }
+  // ---------- this meal: Cronometer-style macro bars, food rows, item editor ----------
+  const MACROS = [['kcal', 'Energy', 'kcal', '#ff8a5b'], ['protein', 'Protein', 'g', '#5fd38d'], ['carbs', 'Carbs', 'g', '#3fc8d4'], ['fat', 'Fat', 'g', '#b57be0']];
+  const r1 = (v) => Math.round(v * 10) / 10;
   function renderTotals () {
     const net = N().carbMode() === 'net';
     const n = mealNutrients();
-    $('basket-carb-label').textContent = net ? 'Net carbs' : 'Total carbs';
     $('log-carbs-label').textContent = net ? 'Net carbs (g)' : 'Carbs (g)';
-    $('basket-total').textContent = basketTotal();
-    $('basket-breakdown').textContent = [`${Math.round(n.carbs || 0)} g carbs`, n.fiber != null ? `${Math.round(n.fiber * 10) / 10} g fibre` : '', n.kcal != null ? Math.round(n.kcal) + ' kcal' : '', n.protein != null ? Math.round(n.protein) + ' g protein' : ''].filter(Boolean).join(' · ');
+    const T = Object.assign({ kcal: 2000, carbs: 275, protein: 50, fat: 78, fiber: 28 }, N().targets()); // daily-value defaults when no target is set
+    const box = $('macro-bars');
+    box.textContent = '';
+    for (const [k, label, unit, color] of MACROS) {
+      let v = n[k], goal = T[k];
+      let name = label;
+      if (k === 'carbs' && net) { v = n.carbs != null ? Math.max(0, n.carbs - (n.fiber || 0)) : null; goal = goal ? goal - (T.fiber || 0) : goal; name = 'Net carbs'; }
+      if (k === 'carbs' && v == null) v = basketTotal();
+      const row = el('div', 'mb-row');
+      const top = el('div', 'mb-top');
+      const lab = el('span', 'mb-label'); lab.appendChild(el('b', null, name));
+      lab.appendChild(document.createTextNode(' ' + (v == null ? '–' : (unit === 'kcal' ? Math.round(v) : r1(v))) + (goal ? ' / ' + Math.round(goal) : '') + ' ' + unit));
+      top.appendChild(lab);
+      top.appendChild(el('span', 'mb-pct', v != null && goal ? Math.round((v / goal) * 100) + '%' : ''));
+      row.appendChild(top);
+      const bar = el('div', 'mb-bar'); const f = el('span'); f.style.width = (v != null && goal ? Math.min(100, (v / goal) * 100) : 0) + '%'; f.style.background = color; bar.appendChild(f); row.appendChild(bar);
+      box.appendChild(row);
+    }
+    box.appendChild(el('div', 'muted small', 'Bars show this meal against your daily targets (Settings → 🥗 Nutrition).'));
     const body = $('meal-facts-body');
     body.textContent = '';
     body.appendChild(N().factsPanel(n, { note: basket.some((x) => x.fixed) ? 'hand-typed foods only add carbs' : '' }));
   }
+  let addOpen = false;
+  function showAdd () { $('food-add').hidden = basket.length > 0 && !addOpen; $('add-food-btn').hidden = !basket.length || addOpen; }
+  const portionText = (x) => {
+    const u = x.units && x.units[x.unit];
+    if (!u) return Math.round(x.grams || 0) + ' g';
+    const q = Math.round(x.qty * 100) / 100;
+    const lab = N().unitLabel(u);
+    const g = Math.round(x.grams) + ' g';
+    if (/^(g|100 g)$/.test(u.label)) return (q === 1 ? '' : q + ' × ') + lab;
+    return q === 1 ? lab + (lab.includes(g) ? '' : ' · ' + g) : q + ' × ' + lab + ' = ' + g;
+  };
   function renderBasket () {
     $('basket-card').hidden = !basket.length;
     const ul = $('basket');
     ul.textContent = '';
     basket.forEach((item, i) => {
-      const li = el('li', 'bk-item');
-      const head = el('div', 'bk-head');
+      const li = el('li', 'diary-row tap');
+      li.tabIndex = 0; li.setAttribute('role', 'button'); li.setAttribute('aria-label', 'Edit ' + item.name);
+      li.appendChild(el('span', 'd-ic', item.fixed ? '✍️' : '🍎'));
       const mid = el('div', 'grow');
       mid.appendChild(el('div', 'title', item.name));
-      const line = el('div', 'muted small', item.fixed ? 'typed by hand · ' + carbLine(item) : (item.brand ? item.brand + ' · ' : '') + carbLine(item));
-      mid.appendChild(line);
-      head.appendChild(mid);
-      const del = el('button', 'del', '✕'); del.type = 'button'; del.setAttribute('aria-label', 'Remove ' + item.name);
-      del.addEventListener('click', () => { basket.splice(i, 1); renderBasket(); syncBasketToLog(); });
-      head.appendChild(del);
-      li.appendChild(head);
-      if (!item.fixed) {
-        const ctl = el('div', 'bk-ctl');
-        const q = el('input'); q.type = 'number'; q.inputMode = 'decimal'; q.min = '0'; q.step = 'any'; q.value = item.qty;
-        q.setAttribute('aria-label', 'Amount of ' + item.name);
-        const sel = el('select'); sel.setAttribute('aria-label', 'Unit for ' + item.name);
-        item.units.forEach((u, k) => { const o = el('option', null, N().unitLabel(u)); o.value = k; if (k === item.unit) o.selected = true; sel.appendChild(o); });
-        const facts = el('details', 'bk-facts'); facts.appendChild(el('summary', null, '🧾 Nutrition'));
-        const fbody = el('div'); facts.appendChild(fbody);
-        const update = () => {
-          item.qty = Number(q.value) || 0; item.unit = Number(sel.value);
-          recompute(item);
-          line.textContent = (item.brand ? item.brand + ' · ' : '') + carbLine(item) + ' · ' + Math.round(item.grams) + ' g';
-          fbody.textContent = ''; fbody.appendChild(N().factsPanel(item.n));
-          renderTotals(); syncBasketToLog();
-        };
-        q.addEventListener('input', update);
-        sel.addEventListener('change', () => {
-          // keep the same weight when switching units, rounded to a friendly amount
-          const g = item.grams, u = item.units[Number(sel.value)];
-          q.value = Math.max(0.25, Math.round((g / u.g) * 4) / 4);
-          update();
-        });
-        ctl.append(q, sel);
-        li.appendChild(ctl);
-        li.appendChild(facts);
-        update();
-      }
+      mid.appendChild(el('div', 'muted small', item.fixed ? 'typed by hand' : (item.brand ? item.brand + ' · ' : '') + portionText(item)));
+      li.appendChild(mid);
+      const right = el('div', 'right');
+      const kcal = item.n && item.n.kcal != null ? Math.round(item.n.kcal) : null;
+      right.appendChild(el('div', null, kcal != null ? kcal + ' kcal' : Math.round(item.carbs) + ' g'));
+      right.appendChild(el('div', 'muted small', (N().carbMode() === 'net' ? 'net ' : '') + Math.round(item.carbs) + ' g carbs'));
+      li.appendChild(right);
+      const open = () => openItem(i);
+      li.addEventListener('click', open);
+      li.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
       ul.appendChild(li);
     });
     renderTotals();
+    showAdd();
   }
   function addToBasket (item) {
     basket.push(recompute(normalizeItem(item)));
+    addOpen = false;
+    $('food-results').textContent = ''; $('food-q').value = '';
     renderBasket();
     syncBasketToLog();
     $('basket-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
+
+  // tap a food: Cronometer-style detail (amount, serving size, energy summary, all nutrients)
+  let itemModal = null;
+  function donut (n) {
+    const p = (n.protein || 0) * 4, c = Math.max(0, (n.carbs || 0) - (n.fiber || 0)) * 4, f = (n.fat || 0) * 9;
+    const tot = p + c + f;
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', '0 0 42 42'); svg.setAttribute('class', 'donut'); svg.setAttribute('aria-hidden', 'true');
+    const ring = (color, frac, off) => { const ci = document.createElementNS(NS, 'circle'); ci.setAttribute('cx', 21); ci.setAttribute('cy', 21); ci.setAttribute('r', 15.9155); ci.setAttribute('fill', 'none'); ci.setAttribute('stroke', color); ci.setAttribute('stroke-width', 4); ci.setAttribute('stroke-dasharray', (frac * 100) + ' ' + (100 - frac * 100)); ci.setAttribute('stroke-dashoffset', 25 - off * 100); svg.appendChild(ci); };
+    if (tot > 0) { ring('#5fd38d', p / tot, 0); ring('#3fc8d4', c / tot, p / tot); ring('#b57be0', f / tot, (p + c) / tot); } else ring('var(--line)', 1, 0);
+    const t = document.createElementNS(NS, 'text'); t.setAttribute('x', 21); t.setAttribute('y', 22.5); t.setAttribute('text-anchor', 'middle'); t.setAttribute('class', 'donut-kcal'); t.textContent = n.kcal != null ? Math.round(n.kcal) : '–'; svg.appendChild(t);
+    const t2 = document.createElementNS(NS, 'text'); t2.setAttribute('x', 21); t2.setAttribute('y', 28); t2.setAttribute('text-anchor', 'middle'); t2.setAttribute('class', 'donut-sub'); t2.textContent = 'kcal'; svg.appendChild(t2);
+    const wrap = el('div', 'energy');
+    wrap.appendChild(svg);
+    const ul = el('ul', 'energy-list');
+    [['Protein', n.protein, p, '#5fd38d'], ['Net carbs', n.carbs != null ? Math.max(0, n.carbs - (n.fiber || 0)) : null, c, '#3fc8d4'], ['Fat', n.fat, f, '#b57be0']].forEach(([l, g, k, col]) => {
+      const li = el('li'); const sp = el('span', null, l + (tot ? ' (' + Math.round((k / tot) * 100) + '%)' : '')); sp.style.color = col;
+      li.appendChild(sp); li.appendChild(el('b', null, g == null ? '–' : r1(g) + ' g')); ul.appendChild(li);
+    });
+    wrap.appendChild(ul);
+    return wrap;
+  }
+  function openItem (i) {
+    const orig = basket[i];
+    if (!orig) return;
+    const it = JSON.parse(JSON.stringify(orig));
+    if (!itemModal) {
+      itemModal = el('div', 'modal sheet-modal'); itemModal.id = 'item-sheet'; itemModal.hidden = true;
+      itemModal.setAttribute('role', 'dialog'); itemModal.setAttribute('aria-modal', 'true'); itemModal.setAttribute('aria-labelledby', 'item-title');
+      itemModal.addEventListener('click', (e) => { if (e.target === itemModal) itemModal.hidden = true; });
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && itemModal && !itemModal.hidden) itemModal.hidden = true; });
+      document.body.appendChild(itemModal);
+    }
+    itemModal.textContent = '';
+    const card = el('div', 'modal-card sheet-card');
+    const head = el('div', 'sheet-head');
+    const h = el('h2', null, it.name); h.id = 'item-title'; h.tabIndex = -1;
+    const x = el('button', 'link', 'Cancel'); x.type = 'button'; x.addEventListener('click', () => { itemModal.hidden = true; });
+    head.append(h, x); card.appendChild(head);
+    if (it.brand) card.appendChild(el('div', 'muted small', it.brand));
+    const preview = el('div');
+    const facts = el('details', 'bk-facts'); facts.appendChild(el('summary', null, '🧾 All nutrients')); const fbody = el('div'); facts.appendChild(fbody);
+    const refresh = () => {
+      recompute(it);
+      preview.textContent = '';
+      if (!it.fixed) {
+        preview.appendChild(el('div', 'muted small center', 'Nutrition for ' + portionText(it)));
+        preview.appendChild(donut(it.n));
+        fbody.textContent = ''; fbody.appendChild(N().factsPanel(it.n));
+      } else preview.appendChild(el('div', 'muted small', (N().carbMode() === 'net' ? 'Net carbs ' : 'Carbs ') + Math.round(it.carbs) + ' g'));
+    };
+    const form = el('div', 'item-form');
+    if (it.fixed) {
+      const mk = (label, key, step) => { const lab = el('label', 'field'); lab.appendChild(el('span', null, label)); const inp = el('input'); inp.type = key === 'name' ? 'text' : 'number'; if (step) { inp.step = step; inp.min = '0'; inp.inputMode = 'decimal'; } inp.value = it[key] != null ? it[key] : ''; inp.addEventListener('input', () => { it[key] = key === 'name' ? inp.value : Number(inp.value) || 0; refresh(); }); lab.appendChild(inp); form.appendChild(lab); };
+      mk('Name', 'name'); mk('Carbs (g)', 'totalCarbs', '1'); mk('Fibre (g)', 'fiberG', '0.5');
+    } else {
+      const row = el('div', 'item-row');
+      const ql = el('label', 'field'); ql.appendChild(el('span', null, 'Amount'));
+      const q = el('input'); q.type = 'number'; q.inputMode = 'decimal'; q.min = '0'; q.step = 'any'; q.value = it.qty; q.id = 'item-qty'; ql.appendChild(q);
+      const sl = el('label', 'field grow'); sl.appendChild(el('span', null, 'Serving size'));
+      const sel = el('select'); sel.id = 'item-unit';
+      it.units.forEach((u, k) => { const o = el('option', null, N().unitLabel(u) + (/^(g|oz|100 g)$/.test(u.label) ? '' : ' — ' + Math.round(u.g) + ' g')); o.value = k; if (k === it.unit) o.selected = true; sel.appendChild(o); });
+      sl.appendChild(sel);
+      q.addEventListener('input', () => { it.qty = Number(q.value) || 0; refresh(); });
+      sel.addEventListener('change', () => { const g = it.grams, u = it.units[Number(sel.value)]; it.unit = Number(sel.value); it.qty = Math.max(0.25, Math.round((g / u.g) * 4) / 4); q.value = it.qty; refresh(); });
+      row.append(ql, sl); form.appendChild(row);
+    }
+    card.appendChild(form);
+    card.appendChild(preview);
+    if (!it.fixed) card.appendChild(facts);
+    const btns = el('div', 'edit-actions');
+    const del = el('button', 'btn danger', '🗑️ Remove'); del.type = 'button';
+    del.addEventListener('click', () => { basket.splice(i, 1); itemModal.hidden = true; renderBasket(); syncBasketToLog(); });
+    const ok = el('button', 'btn primary', 'Save'); ok.type = 'button'; ok.id = 'item-save';
+    ok.addEventListener('click', () => { basket[i] = recompute(it); itemModal.hidden = true; renderBasket(); syncBasketToLog(); });
+    btns.append(del, ok); card.appendChild(btns);
+    itemModal.appendChild(card);
+    refresh();
+    itemModal.hidden = false;
+    h.focus();
+  }
+  $('add-food-btn').addEventListener('click', () => { addOpen = true; showAdd(); $('food-q').focus(); });
+
+  // meal group: picked from the time of day, tap to change
+  let mealGroup = null;
+  function autoGroup () { const t = $('log-time').value ? new Date($('log-time').value) : new Date(); const h = t.getHours() + t.getMinutes() / 60; return h >= 4 && h < 10.5 ? 'Breakfast' : h >= 11 && h < 15 ? 'Lunch' : h >= 17 && h < 21.5 ? 'Dinner' : 'Snack'; }
+  function renderGroups () { const g = mealGroup || autoGroup(); document.querySelectorAll('#meal-groups [data-meal]').forEach((b) => { const on = b.dataset.meal === g; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); }); }
+  document.querySelectorAll('#meal-groups [data-meal]').forEach((b) => b.addEventListener('click', () => { mealGroup = b.dataset.meal; renderGroups(); }));
+  $('log-time').addEventListener('change', renderGroups);
+  C.hooks.beforeLogSave.push((t) => { if (t.carbs || t.insulin) t.mealGroup = mealGroup || autoGroup(); });
+  C.hooks.logSaved.push(() => { mealGroup = null; basket = []; addOpen = false; renderBasket(); renderGroups(); });
 
   // Food search: USDA FoodData Central (Open Food Facts' word search no longer works from web apps).
   // Values in search results are per 100 g. A free personal key (Settings) avoids the tiny shared DEMO_KEY limit.
@@ -318,7 +414,7 @@
     addToBasket({ name, fixed: true, totalCarbs: carbs, fiberG: Number($('qa-fiber').value) || 0 });
     $('qa-name').value = ''; $('qa-carbs').value = ''; $('qa-fiber').value = '';
   });
-  $('basket-clear').addEventListener('click', () => { basket = []; renderBasket(); $('log-carbs').value = ''; $('log-note').value = ''; });
+  $('basket-clear').addEventListener('click', () => { basket = []; addOpen = false; renderBasket(); $('log-carbs').value = ''; $('log-note').value = ''; if (window.CGMHubDose) window.CGMHubDose.update('food'); });
 
   function favs () { return Array.isArray(C.S.meals) ? C.S.meals : []; }
   // load a favourite into the meal; the note is the favourite's name so "The usual" can find it again
@@ -366,7 +462,6 @@
     rememberFoods(basket.map((x) => ({ name: x.name, brand: x.brand, n100: x.n100, units: x.units, unit: x.unit, qty: x.qty, fixed: x.fixed, totalCarbs: x.totalCarbs, fiberG: x.fiberG, carbs: x.carbs })));
   });
   C.hooks.beforeLogSave.push((t) => { if (!basket.length && t.carbs && t.notes) rememberFoods([{ name: t.notes, fixed: true, totalCarbs: t.carbs, carbs: t.carbs }]); });
-  C.hooks.logSaved.push(() => { basket = []; renderBasket(); });
 
   // ---------- water + exercise ----------
   async function quickLog (t, msgEl, text) {
@@ -681,5 +776,5 @@
   renderRecents();
   $('set-fdc').value = C.S.fdcKey || '';
   $('set-fdc-save').addEventListener('click', () => { C.S.fdcKey = $('set-fdc').value.trim(); C.saveSettings(); C.showMsg('fdc-msg', C.S.fdcKey ? '✅ Saved. Food search will use your key.' : 'Cleared. Using the shared key.', 'ok'); });
-  window.CGMHubFeatures = { favs, useFav, showLogTab, cycleModel, phaseAt, renderPeriodPanel, phaseName };
+  window.CGMHubFeatures = { favs, useFav, renderGroups, showLogTab, cycleModel, phaseAt, renderPeriodPanel, phaseName };
 })();

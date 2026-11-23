@@ -11,17 +11,16 @@
   let busy = false, again = false, lastRun = 0;
 
   // ---------- periods ----------
+  // Day = that day. Week / Month = the 7 / 30 days ending on that day, so "this week" always has a full week of data.
   function range (m, d) {
     const a = new Date(d); a.setHours(0, 0, 0, 0);
-    if (m === 'week') { const dow = (a.getDay() + 6) % 7; a.setDate(a.getDate() - dow); const b = new Date(a); b.setDate(b.getDate() + 7); return [a.getTime(), b.getTime()]; }
-    if (m === 'month') { a.setDate(1); const b = new Date(a); b.setMonth(b.getMonth() + 1); return [a.getTime(), b.getTime()]; }
-    const b = new Date(a); b.setDate(b.getDate() + 1); return [a.getTime(), b.getTime()];
+    const b = new Date(a); b.setDate(b.getDate() + 1);
+    if (m === 'week' || m === 'month') a.setDate(a.getDate() - (m === 'week' ? 6 : 29));
+    return [a.getTime(), b.getTime()];
   }
   function shift (m, d, n) {
     const x = new Date(d);
-    if (m === 'week') x.setDate(x.getDate() + 7 * n);
-    else if (m === 'month') x.setMonth(x.getMonth() + n, 1);
-    else x.setDate(x.getDate() + n);
+    x.setDate(x.getDate() + n * (m === 'week' ? 7 : m === 'month' ? 30 : 1));
     return x;
   }
   function label (m, a, b) {
@@ -31,10 +30,12 @@
       if (a === today.getTime() - DAY) return 'Yesterday';
       return new Date(a).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
     }
-    if (m === 'week') return new Date(a).toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' – ' + new Date(b - 1).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
-    return new Date(a).toLocaleDateString([], { month: 'long', year: 'numeric' });
+    const end = b - DAY;
+    const fmt = (t, y) => new Date(t).toLocaleDateString([], y ? { month: 'short', day: 'numeric', year: 'numeric' } : { month: 'short', day: 'numeric' });
+    if (end === today.getTime()) return (m === 'week' ? 'Last 7 days' : 'Last 30 days');
+    return fmt(a) + ' – ' + fmt(end, true);
   }
-  const prevWord = { day: 'yesterday', week: 'last week', month: 'last month' };
+  const prevWord = { day: 'yesterday', week: 'the 7 days before', month: 'the 30 days before' };
   const dur = (ms) => { const m = Math.round(ms / MIN); return m < 60 ? m + ' min' : Math.floor(m / 60) + 'h ' + (m % 60) + 'm'; };
 
   // ---------- stats from 5-minute series ----------

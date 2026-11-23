@@ -568,3 +568,46 @@ li.tap:focus-visible { outline: 2px solid var(--accent, #7aa2ff); outline-offset
 .usual-out.ok { color: var(--in, #4caf50); }
 .usual-out.high { color: var(--high, #e8a33d); }
 .usual-out.low { color: var(--low); }
+
+/* food sheet, Cronometer-style */
+.meal-head { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.meal-groups { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; background: var(--card-2); border-radius: 12px; padding: 4px; }
+.meal-groups button { background: transparent; border: 0; color: var(--text-2); font: inherit; font-weight: 600; font-size: .9rem; padding: 8px 0; border-radius: 9px; cursor: pointer; }
+.meal-groups button.on { background: var(--card); color: var(--text); box-shadow: 0 1px 4px rgba(0,0,0,.25); }
+.macro-bars { display: grid; gap: 10px; margin: 4px 0 12px; }
+.mb-top { display: flex; justify-content: space-between; gap: 8px; font-size: .92rem; }
+.mb-label b { margin-right: 4px; }
+.mb-pct { color: var(--text-2); }
+.mb-bar { height: 10px; background: var(--card-2); border-radius: 99px; overflow: hidden; margin-top: 4px; }
+.mb-bar span { display: block; height: 100%; border-radius: 99px; }
+.diary { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+.diary-row { display: flex; align-items: center; gap: 10px; padding: 12px 4px; border-bottom: 1px solid var(--line); }
+.diary-row .d-ic { font-size: 1.3rem; width: 26px; text-align: center; }
+.diary-row .title { font-weight: 600; }
+.diary-row .right { text-align: right; white-space: nowrap; }
+.add-food { width: 100%; background: transparent; border: 1px dashed var(--line); color: var(--accent); font: inherit; font-weight: 700; padding: 12px; border-radius: 12px; margin: 10px 0; cursor: pointer; }
+.item-row { display: flex; gap: 10px; }
+.item-row .field:first-child { width: 96px; flex-shrink: 0; }
+.energy { display: flex; align-items: center; gap: 16px; margin: 12px 0; }
+.donut { width: 120px; height: 120px; flex-shrink: 0; transform: none; }
+.donut-kcal { font-size: 8px; font-weight: 700; fill: var(--text); }
+.donut-sub { font-size: 4px; fill: var(--text-2); }
+.energy-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; flex: 1; }
+.energy-list li { display: flex; justify-content: space-between; gap: 8px; }
+.center { text-align: center; }
+/* dose helper */
+.dose-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.dose-grid .field { margin: 6px 0; }
+.dose-field input { font-size: 1.4rem; font-weight: 700; }
+.dose-help { margin: 2px 0 8px; }
+.dh-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dh-line b { font-size: 1.05rem; }
+.dh-low { color: var(--low); font-weight: 600; }
+.dh-math summary { cursor: pointer; color: var(--accent); font-weight: 600; margin: 6px 0; }
+.dh-bg { margin: 6px 0; }
+.dh-why { margin-top: 10px; padding: 10px; border: 1px solid var(--high); border-radius: 12px; background: color-mix(in srgb, var(--high) 10%, transparent); }
+.dh-why-q { font-weight: 600; margin-bottom: 8px; }
+.dh-why .chips { margin-bottom: 8px; }
+.dh-other { width: 100%; }
+.chips .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.dh-math .why { display: block; font-size: .8rem; color: var(--muted); }
