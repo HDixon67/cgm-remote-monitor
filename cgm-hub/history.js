@@ -8,7 +8,7 @@
 
   let mode = 'day';
   let anchor = new Date(); anchor.setHours(0, 0, 0, 0);
-  let busy = false, lastRun = 0;
+  let busy = false, again = false, lastRun = 0;
 
   // ---------- periods ----------
   function range (m, d) {
@@ -93,7 +93,7 @@
   }
 
   // ---------- summary (Day summary / Daily average) ----------
-  function summary (trs, a, b) {
+  function summary (trs, a, b, hd) {
     const box = $('hist-sum');
     box.textContent = '';
     const days = Math.max(1, Math.round((Math.min(b, Date.now()) - a) / DAY));
@@ -111,6 +111,15 @@
       ['🏃 Activity', sum((t) => (t.eventType === 'Exercise' ? t.duration : 0)) / per, 'min'], ['💧 Water', sum((t) => t.water) / per / 1000, 'L']];
     const ul = el('ul', 'sum-rows');
     for (const [k, v, u] of rows) { const li = el('li'); li.appendChild(el('span', null, k)); li.appendChild(el('b', null, v ? one(v) + ' ' + u : '–')); ul.appendChild(li); }
+    if (hd && hd.length) {
+      const avg = (f) => { const v = hd.map(f).filter((x) => x != null && x > 0); return v.length ? v.reduce((p, q) => p + q, 0) / v.length : null; };
+      const steps = avg((s) => s.steps), slp = avg((s) => s.sleepMin), rhr = avg((s) => s.restingHR), ex = avg((s) => s.exerciseMin);
+      const add = (k, v) => { const li = el('li'); li.appendChild(el('span', null, k)); li.appendChild(el('b', null, v)); ul.appendChild(li); };
+      if (steps) add('👟 Steps' + (mode === 'day' ? '' : ' · avg'), Math.round(steps).toLocaleString());
+      if (slp) add('😴 Sleep' + (mode === 'day' ? ' (last night)' : ' · avg'), Math.floor(slp / 60) + 'h ' + Math.round(slp % 60) + 'm');
+      if (rhr) add('❤️ Resting heart rate', Math.round(rhr) + ' bpm');
+      if (ex) add('🏋️ Workouts' + (mode === 'day' ? '' : ' · avg'), Math.round(ex) + ' min');
+    }
     const moods = trs.filter((t) => t.eventType === 'Mood');
     if (moods.length) { const li = el('li'); li.appendChild(el('span', null, '🙂 Feeling')); li.appendChild(el('b', null, moods.map((m) => (m.notes || '').replace(/^Feeling: /, '')).slice(0, 3).join(' / '))); ul.appendChild(li); }
     box.appendChild(ul);
@@ -147,8 +156,8 @@
   async function render () {
     applyMode();
     if (mode === 'cycle') return;
-    if (busy) return;
-    busy = true; lastRun = Date.now();
+    if (busy) { again = true; return; } // a tap while loading: run again when this one finishes
+    busy = true; again = false; lastRun = Date.now();
     const [a, b] = range(mode, anchor);
     $('hist-label').textContent = label(mode, a, b);
     $('hist-date').value = C.toLocalInput(new Date(a)).slice(0, 10);
@@ -175,11 +184,13 @@
         $('hist-lows').textContent = '--'; $('hist-highs').textContent = '--';
       }
       if (mode === 'day') { dayChart(d.series, d.trs, a, b); logbook(d.trs.filter((t) => t.eventType !== 'CGMHub Settings')); }
-      summary(d.trs, a, b);
+      let hd = [];
+      try { hd = window.CGMHubHealth ? await window.CGMHubHealth.load(a, b) : []; } catch (e) { /* no health data */ }
+      summary(d.trs, a, b, hd);
       if (window.CGMHubNutrition) window.CGMHubNutrition.renderNutrition($('hist-nut'), d.trs, mode === 'day');
     } catch (e) {
       $('ins-status').textContent = '⚠️ ' + e.message;
-    } finally { busy = false; }
+    } finally { busy = false; if (again) { again = false; render(); } }
   }
 
   document.querySelectorAll('#hist-tabs [data-mode]').forEach((b) => b.addEventListener('click', () => { mode = b.dataset.mode; render(); }));

@@ -66,6 +66,10 @@ Needs `PUSHOVER_API_TOKEN` and `PUSHOVER_ALARM_KEY` in the project's `nightscout
 - **Nutrient quest**: once you have full-nutrition meals on 3+ of the last 7 days, one daily quest targets your lowest "aim for" nutrient (vitamin D excluded, since it usually comes from a supplement). The goal is halfway between your average and your target, and it checks itself as you log food. If nothing is low but a "limit" nutrient (e.g. sodium) runs high, the quest is to stay under it (checked after 8 PM).
 - **🧪 Experiments**: every pattern with an experiment has a *Start this 7-day experiment* button. Tap *I did it today* each day (+40 XP). Doing it on 5 of 7 days earns +150 XP and the 🧪 Scientist badge, then the app compares how often the pattern happened in the 14 days before vs the experiment week.
 
+## Android app + Health Connect
+
+`cgm-hub-android/` wraps this web app in a small Android app (Capacitor) that can read **Health Connect**: steps, heart rate, resting heart rate, sleep, workouts and active calories from Samsung Health / Galaxy Watch. It saves one `Health Summary` treatment per day to Nightscout (re-syncs update it in place). Steps/sleep/heart-rate tiles, History rows, steps-vs-glucose and sleep-vs-morning patterns, a steps quest and watch workouts in "lows after exercise" use it, from any device. See `cgm-hub-android/README.md` to install.
+
 ## Import Libre history
 
 Settings → **Import Libre history**. Download the CSV from libreview.com (Glucose History → Download glucose data), then pick the file.

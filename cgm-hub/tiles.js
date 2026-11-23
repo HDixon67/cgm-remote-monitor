@@ -22,9 +22,11 @@
   const meanOf = (a) => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : null);
   const hourOf = (t) => new Date(t).getHours();
   const none = { value: '--', sub: 'not enough data' };
+  const hcNone = { value: '--', sub: 'connect Health Connect' };
+  const H = (c) => (window.CGMHubHealth ? window.CGMHubHealth.cachedRange(c.a, c.b) : []);
 
   // ---------- tile catalog ----------
-  const CATS = ['Stats & visualization', 'Estimates', 'Insulin', 'Food', 'Liquid', 'Exercise', 'Advanced stats'];
+  const CATS = ['Stats & visualization', 'Estimates', 'Insulin', 'Food', 'Liquid', 'Exercise', 'Advanced stats', 'Steps, sleep & heart (Health Connect)'];
   const T = [
     // Stats & visualization
     { id: 'tir', cat: 0, name: '% In range', desc: 'Share of readings inside your range.', p: '24h', calc: (c) => c.n ? { value: pctTxt(c.pIn), unit: '%', sub: 'goal: 70%+', icon: c.pIn >= 70 ? '✅' : '' } : none },
@@ -67,6 +69,11 @@
     // Advanced
     { id: 'cv', cat: 6, name: 'Variability (CV)', desc: 'Coefficient of variation: how much glucose swings compared with the average. Goal 36% or less.', p: '24h', calc: (c) => c.n ? { value: pctTxt(c.cv), unit: '%', sub: 'goal: under 36%' } : none },
     { id: 'sd', cat: 6, name: 'Standard deviation', desc: 'How spread out your readings are. Lower = steadier.', p: '24h', calc: (c) => c.n ? { value: diffBG(c.sd), sub: C.unitLabel() } : none },
+    { id: 'hc_steps', cat: 7, name: 'Steps', desc: 'Steps from Health Connect (phone + watch).', p: 'today', calc: (c) => { const h = H(c); return h.length ? { value: Math.round(h.reduce((a, s) => a + (s.steps || 0), 0)).toLocaleString(), sub: 'steps', icon: '👟' } : hcNone; } },
+    { id: 'hc_stepsday', cat: 7, name: 'Steps / day', desc: 'Average daily steps.', p: '7d', calc: (c) => { const h = H(c).filter((s) => s.steps); return h.length ? { value: Math.round(h.reduce((a, s) => a + s.steps, 0) / h.length).toLocaleString(), sub: 'per day', icon: '👟' } : hcNone; } },
+    { id: 'hc_sleep', cat: 7, name: 'Sleep', desc: 'Sleep from Health Connect (the night ending that day).', p: 'today', calc: (c) => { const h = H(c).filter((s) => s.sleepMin); if (!h.length) return hcNone; const m = Math.round(h.reduce((a, s) => a + s.sleepMin, 0) / h.length); return { value: Math.floor(m / 60) + 'h ' + (m % 60) + 'm', sub: h.length > 1 ? 'average' : 'last night', icon: '😴' }; } },
+    { id: 'hc_rhr', cat: 7, name: 'Resting heart rate', desc: 'Resting heart rate from your watch.', p: '7d', calc: (c) => { const h = H(c).filter((s) => s.restingHR); return h.length ? { value: String(Math.round(h.reduce((a, s) => a + s.restingHR, 0) / h.length)), unit: 'bpm', sub: 'resting', icon: '❤️' } : hcNone; } },
+    { id: 'hc_active', cat: 7, name: 'Workouts', desc: 'Minutes of tracked workouts.', p: '7d', calc: (c) => { const h = H(c); return h.length ? { value: String(Math.round(h.reduce((a, s) => a + (s.exerciseMin || 0), 0) / Math.max(1, c.days))), unit: 'min', sub: 'per day', icon: '🏋️' } : hcNone; } },
     { id: 'quart', cat: 6, name: 'Quartiles', desc: '25%, 50% and 75% of your readings fall below these values.', p: '14d', wide: true, calc: (c) => c.n ? { quart: [quant(c.sorted, 0.25), quant(c.sorted, 0.5), quant(c.sorted, 0.75)] } : none },
   ];
   const byId = Object.fromEntries(T.map((t) => [t.id, t]));

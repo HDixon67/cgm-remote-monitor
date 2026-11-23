@@ -1,0 +1,11 @@
+{
+  "appId": "io.github.hdixon67.cgmhub",
+  "appName": "CGM Hub",
+  "webDir": "www",
+  "server": {
+    "url": "https://hdixon67.github.io/cgm-remote-monitor/",
+    "allowNavigation": ["hdixon67.github.io"],
+    "errorPath": "index.html"
+  },
+  "android": { "allowMixedContent": false }
+}
