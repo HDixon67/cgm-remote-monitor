@@ -162,50 +162,65 @@
           <div class="sheet-head"><h2 id="sheet-title">Log</h2><button class="link" id="sheet-close" type="button">Done</button></div>
 
           <div data-logpanel="food" hidden>
-            <div class="usual" id="usual-wrap" hidden>
-              <div class="split-title">🔁 The usual</div>
-              <div id="usual-list"></div>
-            </div>
-            <form class="search-row" id="food-form">
-              <input type="search" id="food-q" placeholder="e.g. banana, tortilla, Cheerios" autocomplete="off" enterkeyhint="search">
-              <button class="btn primary slim" id="food-go">Search</button>
-              <button class="btn slim" id="scan-open" type="button" aria-label="Scan a barcode">📷</button>
-            </form>
-            <ul class="food-results" id="food-results"></ul>
-            <div class="favs" id="recent-wrap" hidden>
-              <div class="split-title">🕘 Recent</div>
-              <div class="chips" id="recent-list"></div>
-            </div>
-            <div class="favs" id="fav-wrap">
-              <div class="split-title">⭐ Favourite meals</div>
-              <div class="chips" id="fav-list"></div>
-            </div>
-            <details class="quick-add">
-              <summary>Add something by hand</summary>
-              <div class="grid2">
-                <label class="field"><span>Name</span><input type="text" id="qa-name" maxlength="60" placeholder="Chalupa"></label>
-                <label class="field"><span>Carbs (g)</span><input type="number" inputmode="decimal" id="qa-carbs" min="0" step="1"></label>
-                <label class="field"><span>Fibre (g, optional)</span><input type="number" inputmode="decimal" id="qa-fiber" min="0" step="0.5"></label>
+            <div class="meal-head">
+              <div class="meal-groups" id="meal-groups" role="radiogroup" aria-label="Meal">
+                <button type="button" role="radio" data-meal="Breakfast">Breakfast</button>
+                <button type="button" role="radio" data-meal="Lunch">Lunch</button>
+                <button type="button" role="radio" data-meal="Dinner">Dinner</button>
+                <button type="button" role="radio" data-meal="Snack">Snack</button>
               </div>
-              <button class="btn" id="qa-add" type="button">Add to meal</button>
-            </details>
-            <div class="sub-card" id="basket-card" hidden>
-              <div class="card-head"><h2>This meal</h2><button class="link" id="basket-clear" type="button">Clear</button></div>
-              <ul class="basket" id="basket"></ul>
-              <div class="basket-total"><span id="basket-carb-label">Net carbs</span>: <b id="basket-total">0</b> g<div class="muted small" id="basket-breakdown"></div></div>
-              <details class="meal-facts"><summary>🧾 Meal nutrition facts</summary><div id="meal-facts-body"></div></details>
-              <button class="btn" id="fav-save" type="button">⭐ Save as a favourite</button>
+              <input type="datetime-local" id="log-time" aria-label="When">
             </div>
-            <div class="sub-card">
-              <label class="field"><span id="log-carbs-label">Carbs (g)</span>
-                <input type="number" inputmode="decimal" step="1" min="0" id="log-carbs" placeholder="0"></label>
-              <label class="field"><span>Rapid insulin for this meal (u)</span>
-                <input type="number" inputmode="decimal" step="0.5" min="0" id="log-insulin" placeholder="0"></label>
-              <button class="link" type="button" data-goto="calc">🧮 Work it out in the bolus calculator</button>
-              <label class="field"><span>Food / note (optional)</span>
+
+            <div class="sub-card meal-card" id="basket-card" hidden>
+              <div class="card-head"><h2>This meal</h2><button class="link" id="basket-clear" type="button">Clear</button></div>
+              <div class="macro-bars" id="macro-bars"></div>
+              <ul class="diary" id="basket"></ul>
+              <button class="add-food" id="add-food-btn" type="button">＋ Add food</button>
+              <details class="meal-facts"><summary>🧾 Meal nutrition facts</summary><div id="meal-facts-body"></div></details>
+              <button class="link" id="fav-save" type="button">⭐ Save as a favourite</button>
+            </div>
+
+            <div id="food-add">
+              <div class="usual" id="usual-wrap" hidden>
+                <div class="split-title">🔁 The usual</div>
+                <div id="usual-list"></div>
+              </div>
+              <form class="search-row" id="food-form">
+                <input type="search" id="food-q" placeholder="Search foods" autocomplete="off" enterkeyhint="search">
+                <button class="btn primary slim" id="food-go">Search</button>
+                <button class="btn slim" id="scan-open" type="button" aria-label="Scan a barcode">📷</button>
+              </form>
+              <ul class="food-results" id="food-results"></ul>
+              <div class="favs" id="recent-wrap" hidden>
+                <div class="split-title">🕘 Recent</div>
+                <div class="chips" id="recent-list"></div>
+              </div>
+              <div class="favs" id="fav-wrap">
+                <div class="split-title">⭐ Favourite meals</div>
+                <div class="chips" id="fav-list"></div>
+              </div>
+              <details class="quick-add">
+                <summary>Add something by hand</summary>
+                <div class="grid2">
+                  <label class="field"><span>Name</span><input type="text" id="qa-name" maxlength="60" placeholder="Chalupa"></label>
+                  <label class="field"><span>Carbs (g)</span><input type="number" inputmode="decimal" id="qa-carbs" min="0" step="1"></label>
+                  <label class="field"><span>Fibre (g, optional)</span><input type="number" inputmode="decimal" id="qa-fiber" min="0" step="0.5"></label>
+                </div>
+                <button class="btn" id="qa-add" type="button">Add to meal</button>
+              </details>
+            </div>
+
+            <div class="sub-card dose-card">
+              <div class="dose-grid">
+                <label class="field"><span id="log-carbs-label">Carbs (g)</span>
+                  <input type="number" inputmode="decimal" step="1" min="0" id="log-carbs" placeholder="0"></label>
+                <label class="field dose-field"><span>💉 Rapid insulin (u)</span>
+                  <input type="number" inputmode="decimal" step="0.5" min="0" id="log-insulin" placeholder="0"></label>
+              </div>
+              <div class="dose-help" id="dose-food"></div>
+              <label class="field"><span>Note (optional)</span>
                 <input type="text" id="log-note" maxlength="140" placeholder="e.g. Chalupa"></label>
-              <label class="field"><span>When</span>
-                <input type="datetime-local" id="log-time"></label>
               <button class="btn primary" id="log-save">Save meal</button>
               <div class="notice" id="log-msg" hidden></div>
             </div>
@@ -214,6 +229,7 @@
           <div data-logpanel="rapid" hidden>
             <label class="field"><span>Insulin name</span><input type="text" id="rapid-name" maxlength="30" placeholder="Novorapid"></label>
             <label class="field"><span>Units</span><input type="number" inputmode="decimal" id="rapid-units" min="0" step="0.5" placeholder="2"></label>
+            <div class="dose-help" id="dose-rapid"></div>
             <label class="field"><span>Note (optional)</span><input type="text" id="rapid-note" maxlength="80" placeholder="e.g. correction"></label>
             <label class="field"><span>When</span><input type="datetime-local" id="rapid-time"></label>
             <p class="muted small">For a meal, use 🍽️ Food so carbs and insulin are saved together.</p>
@@ -687,6 +703,7 @@
   <script src="app.js"></script>
   <script src="nutrition.js"></script>
   <script src="features.js"></script>
+  <script src="dose.js"></script>
   <script src="health.js"></script>
   <script src="insights.js"></script>
   <script src="importer.js"></script>

@@ -663,6 +663,18 @@
     return missing;
   }
   let calcBgTouched = false;
+  // the calculator for other screens (Food / Rapid sheets): bgUser null = use a fresh CGM reading
+  function calcFor (carbs, bgUser) {
+    const missing = calcReady();
+    const cur = entries[0];
+    const fresh = cur && Date.now() - cur.t <= 10 * MIN;
+    let bg = bgUser, bgSrc = 'typed';
+    if (bg == null || bg === '' || isNaN(bg)) { bg = fresh ? Number(fmtBG(cur.mg)) : null; bgSrc = fresh ? 'cgm' : 'none'; }
+    if (missing.length) return { ready: false, missing, bg, bgSrc };
+    const res = bolusCalc(bg, Number(carbs) || 0, onBoard());
+    const isLow = bg != null && toMg(bg) < toMg(S.low);
+    return { ready: true, bg, bgSrc, bgAge: fresh ? Date.now() - cur.t : null, isLow, shown: isLow ? 0 : res.shown, total: res.total, steps: res.steps };
+  }
   function renderCalc () {
     const missing = calcReady();
     const blocked = $('calc-blocked');
@@ -1001,6 +1013,7 @@
       if (carbs) t.carbs = carbs;
       if (note) t.notes = note;
       runHooks('beforeLogSave', t);
+      if (t._block) { showMsg('log-msg', t._block, 'warn'); return; }
       $('log-save').disabled = true;
       try {
         await apiPostTreatment(t);
@@ -1043,7 +1056,7 @@
   // internal API for features.js
   window.CGMHubCore = {
     get S () { return S; }, get entries () { return entries; }, get treatments () { return treatments; }, get periods () { return periods; },
-    hooks, onBoard: (t) => onBoard(t), apiGet, apiUrl, apiPostTreatment, apiPutTreatment, apiDeleteTreatment, tappable, refresh, saveSettings, go, showMsg, normEntries, normTreatments, isBasal, stats,
+    hooks, onBoard: (t) => onBoard(t), calcFor, apiGet, apiUrl, apiPostTreatment, apiPutTreatment, apiDeleteTreatment, tappable, refresh, saveSettings, go, showMsg, normEntries, normTreatments, isBasal, stats,
     $, el, sv, fmtBG, toMg, fromMg, mmol, unitLabel, clockTime, durText, toLocalInput, statusOf, treatmentLabel, iconFor,
     MIN, HOUR, DAY, MGDL_PER_MMOL,
   };

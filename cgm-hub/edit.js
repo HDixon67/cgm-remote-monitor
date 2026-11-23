@@ -92,6 +92,7 @@
       lab.appendChild(inp);
       form.appendChild(lab);
     }
+    if (raw.suggestedInsulin != null) form.appendChild(el('p', 'muted small', '🧮 Calculator suggested ' + raw.suggestedInsulin + ' u' + (raw.doseReason ? ' · you chose ' + (raw.insulin || 0) + ' u: “' + raw.doseReason + '”' : '')));
     if (raw.nutrients && typeof raw.nutrients === 'object') form.appendChild(el('p', 'muted small', 'Changing carbs here won’t change the saved nutrition details for this meal.'));
     modal.hidden = false;
     document.body.classList.add('sheet-open');

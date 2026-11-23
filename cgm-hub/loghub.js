@@ -22,6 +22,8 @@
     F.showLogTab(name);
     if (name === 'food' && !$('log-time').value) $('log-time').value = nowInput();
     if (name === 'food' && window.CGMHubUsual) window.CGMHubUsual.render();
+    if ((name === 'food' || name === 'rapid') && window.CGMHubDose) window.CGMHubDose.reset(name);
+    if (name === 'food' && window.CGMHubFeatures.renderGroups) window.CGMHubFeatures.renderGroups();
     if (name === 'rapid') { $('rapid-name').value = C.S.rapidName || ''; $('rapid-time').value = nowInput(); }
     if (name === 'bg') { $('bg-time').value = nowInput(); document.querySelectorAll('.unit-label').forEach((e) => { e.textContent = C.unitLabel(); }); }
     if (name === 'note') $('note-time').value = nowInput();
@@ -61,8 +63,11 @@
     C.S.rapidName = name; C.saveSettings();
     const note = $('rapid-note').value.trim();
     const when = $('rapid-time').value ? new Date($('rapid-time').value) : new Date();
-    if (await post({ eventType: 'Correction Bolus', insulin: u, insulinType: name, notes: note || name + ' ' + u + 'u', created_at: when.toISOString() }, 'rapid-msg', name + ' ' + u + 'u logged.')) {
+    const dc = window.CGMHubDose ? window.CGMHubDose.check('rapid') : { fields: {} };
+    if (dc.block) { C.showMsg('rapid-msg', dc.block, 'warn'); return; }
+    if (await post(Object.assign({ eventType: 'Correction Bolus', insulin: u, insulinType: name, notes: note || name + ' ' + u + 'u', created_at: when.toISOString() }, dc.fields), 'rapid-msg', name + ' ' + u + 'u logged.')) {
       $('rapid-units').value = ''; $('rapid-note').value = '';
+      if (window.CGMHubDose) window.CGMHubDose.reset('rapid');
     }
   });
 
