@@ -855,5 +855,5 @@
     }
   }
 
-  window.CGMHubGame = { levelFor, xpForLevel, scoreDay, startExperiment, get experiment () { return G.experiment; }, get state () { return lastState; } };
+  window.CGMHubGame = { levelFor, xpForLevel, scoreDay, startExperiment, get experiment () { return G.experiment; }, get state () { return lastState; }, get side () { return G.on ? lastSide : null; } };
 })();

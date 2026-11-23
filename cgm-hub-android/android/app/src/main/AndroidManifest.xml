@@ -9,6 +9,14 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
 
+        <!-- home-screen widget -->
+        <receiver android:name=".GlucoseWidget" android:exported="false" android:label="CGM Hub glucose">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/glucose_widget_info" />
+        </receiver>
+
         <!-- download Google's barcode scanner with the app instead of on first use -->
         <meta-data android:name="com.google.mlkit.vision.DEPENDENCIES" android:value="barcode_ui" />
 
