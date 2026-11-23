@@ -17,6 +17,25 @@ const USER = process.env.PUSHOVER_ALARM_KEY || process.env.PUSHOVER_REMINDER_KEY
 const WINDOW = 15; // minutes between runs
 const MIN = 60 * 1000;
 
+// Same check as detect() in cgm-hub/dideat.js. ents newest first [{t, mg}], trs [{t, carbs, insulin, basal}].
+function unloggedRise (ents, trs, now, lowMg) {
+  const cur = ents[0];
+  if (!cur || now - cur.t > 15 * MIN) return null;
+  const win = ents.filter((e) => cur.t - e.t <= 75 * MIN);
+  if (win.length < 5) return null;
+  const near = win.filter((e) => cur.t - e.t <= 6 * MIN);
+  const curMg = near.reduce((a, e) => a + e.mg, 0) / near.length;
+  const before = win.filter((e) => cur.t - e.t >= 15 * MIN);
+  if (!before.length) return null;
+  const low = before.reduce((a, e) => (e.mg < a.mg ? e : a));
+  const e20 = win.find((e) => cur.t - e.t >= 20 * MIN);
+  if (curMg - low.mg < 45 || curMg < 130 || !e20 || curMg - e20.mg < 15) return null;
+  if (ents.some((e) => now - e.t < 120 * MIN && e.mg < lowMg)) return null;
+  if (trs.some((t) => t.carbs > 0 && t.t >= low.t - 120 * MIN && t.t <= now + MIN)) return null;
+  if (trs.some((t) => t.insulin > 0 && !t.basal && t.t >= low.t - 60 * MIN && t.t <= now + MIN)) return null;
+  return { from: low.t, rise: curMg - low.mg, cur: curMg };
+}
+
 function log (...a) { console.log(new Date().toISOString(), ...a); }
 
 async function main () {
@@ -48,7 +67,7 @@ async function main () {
   };
   const clock = (t) => new Intl.DateTimeFormat('en-CA', { timeZone: tz, hour: 'numeric', minute: '2-digit' }).format(new Date(t));
 
-  const trs = (await get('/api/v1/treatments.json', { 'find[created_at][$gte]': new Date(Math.min(midnight, now - 2 * 60 * MIN)).toISOString(), count: '500' }))
+  const trs = (await get('/api/v1/treatments.json', { 'find[created_at][$gte]': new Date(Math.min(midnight, now - 4 * 60 * MIN)).toISOString(), count: '500' }))
     .map((t) => ({ ...t, ms: typeof t.mills === 'number' ? t.mills : Date.parse(t.created_at) }));
   const today = trs.filter((t) => t.ms >= midnight);
   const out = [];
@@ -85,6 +104,22 @@ async function main () {
       const bolus = trs.some((t) => Number(t.insulin) > 0 && !/basal/i.test(t.eventType || '') && t.ms >= c.ms - 20 * MIN && t.ms <= c.ms + 30 * MIN);
       if (!bolus) out.push(['🍽️ Bolus check', `You logged ${Math.round(c.carbs)} g carbs at ${clock(c.ms)} but no insulin. Did you bolus? (If yes, log it in CGM Hub.)`]);
     }
+  }
+
+  // 🍽️ did you eat? a fast rise with nothing logged (new this run only, quiet 00:00–06:00)
+  if ((cfg.didEat ? cfg.didEat.on : true) && nowMin >= 6 * 60) {
+    try {
+      const ents = (await get('/api/v1/entries/sgv.json', { 'find[date][$gte]': String(now - 100 * MIN), count: '300' }))
+        .filter((e) => typeof e.sgv === 'number' && e.sgv >= 20).map((e) => ({ t: e.date, mg: e.sgv })).sort((a, b) => b.t - a.t);
+      const tr = trs.map((t) => ({ t: t.ms, carbs: Number(t.carbs) || 0, insulin: Number(t.insulin) || 0, basal: /basal/i.test(t.eventType || '') }));
+      const lowMg = cfg.lowMg || 70;
+      const hit = unloggedRise(ents, tr, now.getTime(), lowMg);
+      const was = unloggedRise(ents.filter((e) => e.t <= now - WINDOW * MIN), tr.filter((t) => t.t <= now - WINDOW * MIN), now - WINDOW * MIN, lowMg);
+      if (hit && !was) {
+        const up = cfg.units === 'mgdl' ? String(Math.round(hit.rise)) + ' mg/dL' : (hit.rise / 18).toFixed(1) + ' mmol/L';
+        out.push(['🍽️ Did you eat?', `You’ve gone up ${up} since ${clock(hit.from)} and nothing’s logged. If you ate, log it in CGM Hub (a guess is fine) and check you bolused.`]);
+      }
+    } catch (e) { log('did-you-eat check skipped:', e.message); }
   }
 
   // ⚔️ quests nudge

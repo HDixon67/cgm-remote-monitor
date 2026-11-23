@@ -22,7 +22,7 @@
   const keyToTime = (k) => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d).getTime(); };
 
   // count app opens + feature use (for quests/badges)
-  function bump (name) { const k = todayKey(); G.events[k] = G.events[k] || {}; G.events[k][name] = (G.events[k][name] || 0) + 1; save(); }
+  function bump (name) { const k = todayKey(); G.events[k] = G.events[k] || {}; G.events[k][name] = (G.events[k][name] || 0) + 1; G.lastUse = G.lastUse || {}; G.lastUse[name] = Date.now(); save(); }
   function used (name, k) { return ((G.events[k || todayKey()] || {})[name]) || 0; }
   function totalUsed (name) { return Object.values(G.events).reduce((s, d) => s + (d[name] || 0), 0); }
   bump('open');
@@ -199,6 +199,203 @@
     return { done: prog >= goal, prog: Math.min(prog, goal), goal };
   }
 
+  // =====================================================================
+  // ✨ Side quests: optional, situational, bonus XP only (never a "fail")
+  // Built from right now: your number, trend, insulin/carbs on board, time of day, meds, cycle, steps, insights.
+  // =====================================================================
+  const SIDE_XP_CAP = 150; // per day, so XP stays meaningful
+  function sideDay (k) { G.side = G.side || {}; return (G.side[k] = G.side[k] || { done: {}, at: {} }); }
+  function lastUse (name) { return ((G.lastUse || {})[name]) || 0; }
+  const isMeal = (t) => t.carbs > 0;
+  const isBolus = (t) => t.insulin > 0 && !C.isBasal(t);
+  function sideCtx () {
+    const now = Date.now(), L = C.toMg(C.S.low), H = C.toMg(C.S.high);
+    const ents = C.entries; // newest first
+    const cur = ents[0] && now - ents[0].t < 15 * MIN ? ents[0] : null;
+    let slope = 0;
+    if (cur) { const e15 = ents.find((e) => cur.t - e.t >= 12 * MIN); if (e15) slope = (cur.mg - e15.mg) / ((cur.t - e15.t) / MIN); }
+    const runOf = (test) => { if (!cur || !test(cur.mg)) return 0; let s = cur.t; for (const e of ents) { if (!test(e.mg)) break; s = e.t; } return (now - s) / MIN; };
+    const trs = C.treatments;
+    const all = (trsCache.list || []).concat(trs);
+    const d0 = keyToTime(todayKey());
+    const at = (h, m) => d0 + h * HOUR + (m || 0) * MIN;
+    return {
+      now, L, H, cur, slope, ob: C.onBoard(), hour: new Date().getHours(), trs, all, d0, at,
+      highFor: runOf((v) => v > H), inFor: runOf((v) => v >= L && v <= H),
+      lowRecent: ents.some((e) => now - e.t < 45 * MIN && e.mg < L),
+      since: (t0, f) => trs.some((t) => t.t >= t0 && t.t <= now + MIN && f(t)),
+    };
+  }
+  const openSheet = (name) => () => { C.go('log'); if (window.CGMHubLogHub) window.CGMHubLogHub.openSheet(name); };
+  // each: base id, priority (lower = shown first), xp, icon, text, show(ctx) → truthy, optional check(ctx, rec) for auto-done
+  const SIDE = [
+    { base: 'low', pri: 0, xp: 20, icon: '🧃', block: true, text: () => 'Treat the low: 15 g fast sugar, then recheck in 15 min', why: (c) => 'You’re at ' + C.fmtBG(c.cur.mg), show: (c) => c.cur && c.cur.mg < c.L },
+    { base: 'bedsnack', pri: 1, xp: 15, icon: '🍪', text: () => 'Small bedtime snack: you’re on the lower side with insulin on board', show: (c) => c.hour >= 21 && c.cur && c.cur.mg >= c.L && c.cur.mg < 108 && c.ob.iob > 0.3 },
+    { base: 'dropping', pri: 1, xp: 10, icon: '🍬', block: true, text: () => 'Dropping with insulin on board: keep a snack in reach', show: (c) => c.cur && c.cur.mg >= c.L && c.cur.mg < c.L + 45 && c.slope <= -1.5 && c.ob.iob > 0.5 },
+    { base: 'nobolus', pri: 1, xp: 15, icon: '💉', block: true, text: () => 'Did you bolus for that meal? Log it', action: ['Log insulin', openSheet('rapid')],
+      show: (c) => { const m = c.trs.find((t) => isMeal(t) && t.carbs >= 10 && !t.insulin && c.now - t.t < 45 * MIN); return m && !c.since(m.t - 20 * MIN, isBolus) ? { base: m.t } : false; },
+      check: (c, r) => c.since((r.base || r.t) - 20 * MIN, isBolus) },
+    { base: 'basal', pri: 1, xp: 20, icon: '💉', text: () => 'Long-acting insulin: taken it? Log it', action: ['Log it', openSheet('basal')],
+      show: (c) => {
+        const b = c.all.filter((t) => C.isBasal(t) && c.now - t.t < 10 * DAY);
+        if (b.length < 2 || b.some((t) => c.now - t.t < 20 * HOUR)) return false;
+        const mins = b.map((t) => { const d = new Date(t.t); return d.getHours() * 60 + d.getMinutes(); }).sort((x, y) => x - y);
+        return c.now > c.at(0, mins[Math.floor(mins.length / 2)] + 30);
+      },
+      check: (c) => c.all.some((t) => C.isBasal(t) && c.now - t.t < 20 * HOUR) },
+    { base: 'correct', pri: 2, xp: 15, icon: '🧮', block: true, text: () => 'You’re high: check if you need a correction', action: ['Open calculator', () => C.go('calc')],
+      why: (c) => 'At ' + C.fmtBG(c.cur.mg) + ', no rapid insulin in 2 h',
+      show: (c) => c.cur && c.cur.mg > c.H && c.slope > -0.5 && !c.since(c.now - 2 * HOUR, isBolus), check: (c, r) => lastUse('calc') >= r.t || c.since(r.t, isBolus) },
+    { base: 'ketones', pri: 2, xp: 15, icon: '🧪', block: true, text: () => 'Check for ketones (skip exercise if you have them)', show: (c) => c.cur && c.cur.mg >= 270 && c.highFor >= 60 },
+    { base: 'bounce', pri: 3, xp: 10, icon: '🦸', block: true, text: () => 'You bounced back! A little protein helps it stick', show: (c) => c.cur && c.cur.mg >= c.L && c.lowRecent },
+    { base: 'med', pri: 3, xp: 10, icon: '💊', multi: true, action: ['Open meds', openSheet('meds')] }, // built per scheduled dose below
+    { base: 'water_high', pri: 4, xp: 10, icon: '💧', block: true, text: () => 'Drink a big glass of water', why: (c) => 'High for ' + C.durText(c.highFor * MIN), action: ['Log water', openSheet('water')],
+      show: (c) => c.highFor >= 90, check: (c, r) => c.since(r.t, (t) => t.eventType === 'Water') },
+    { base: 'site', pri: 4, xp: 10, icon: '🖊️', text: () => 'Stubborn high: is your insulin OK? (expired or got warm?) Try a fresh needle', show: (c) => c.highFor >= 180 },
+    { base: 'bedcheck', pri: 4, xp: 10, icon: '🌙', text: () => 'Bedtime: glance at your number and put sugar by the bed', show: (c) => c.hour >= 21 },
+    { base: 'breakfast', pri: 5, xp: 10, icon: '🍳', text: () => 'Log breakfast (a guess is totally fine)', action: ['Log food', openSheet('food')],
+      show: (c) => c.hour >= 6 && c.hour < 11 && !c.since(c.at(4), isMeal), check: (c) => c.since(c.at(4), isMeal) },
+    { base: 'lunch', pri: 5, xp: 10, icon: '🥪', text: () => 'Log lunch (a guess is totally fine)', action: ['Log food', openSheet('food')],
+      show: (c) => c.hour >= 12 && c.hour < 15 && !c.since(c.at(11), isMeal), check: (c) => c.since(c.at(11), isMeal) },
+    { base: 'dinner', pri: 5, xp: 10, icon: '🍝', text: () => 'Log dinner (a guess is totally fine)', action: ['Log food', openSheet('food')],
+      show: (c) => c.hour >= 18 && c.hour < 22 && !c.since(c.at(16), isMeal), check: (c) => c.since(c.at(16), isMeal) },
+    { base: 'walk_high', pri: 5, xp: 15, icon: '🚶', block: true, text: () => '10-minute walk to help bring it down', logs: { eventType: 'Exercise', duration: 10, notes: 'Walk to bring a high down (side quest)' },
+      show: (c) => c.cur && c.cur.mg > c.H && c.cur.mg < 250 && c.hour >= 8 && c.hour < 22 },
+    { base: 'stroll', pri: 5, xp: 15, icon: '🚶', block: true, text: () => 'Post-meal stroll: 10 minutes', logs: { eventType: 'Exercise', duration: 10, notes: 'Walk after a meal (side quest)' },
+      show: (c) => c.hour < 22 && !(c.cur && c.cur.mg > c.H) && c.trs.some((t) => isMeal(t) && c.now - t.t > 20 * MIN && c.now - t.t < 90 * MIN) },
+    { base: 'ride', pri: 6, xp: 15, icon: '🌊', block: true, text: (c, r) => 'Ride the wave: stay in range one more hour' + (r ? ` (${Math.max(0, Math.ceil(60 - (c.now - r.t) / MIN))} min to go)` : ''),
+      show: (c) => c.inFor >= 120, check: (c, r) => c.inFor * MIN >= c.now - r.t && c.now - r.t >= 60 * MIN },
+    { base: 'water_day', pri: 7, xp: 10, icon: '💧', text: () => 'Water break!', action: ['Log water', openSheet('water')],
+      show: (c) => c.hour >= 13 && c.hour < 18 && c.trs.filter((t) => t.t >= c.d0 && t.eventType === 'Water').length < 2, check: (c, r) => c.since(r.t, (t) => t.eventType === 'Water') },
+    { base: 'mood', pri: 7, xp: 10, icon: '🙂', text: () => 'Quick mood check-in', action: ['Check in', () => window.CGMHubLogHub && window.CGMHubLogHub.openMood()],
+      show: (c) => c.hour >= 12 && !c.since(c.d0, (t) => t.eventType === 'Mood'), check: (c) => c.since(c.d0, (t) => t.eventType === 'Mood') },
+    { base: 'steps', pri: 7, xp: 15, icon: '👟', text: (c, r) => '1,000 more steps' + (r && r.base != null ? ` (from ${Number(r.base).toLocaleString()})` : ''),
+      show: (c) => { const H2 = window.CGMHubHealth; const s = H2 && H2.cachedDay(todayKey()); const goal = stepGoal(); return c.hour >= 14 && c.hour < 21 && s && goal && s.steps < goal ? { base: s.steps } : false; },
+      check: (c, r) => { const s = window.CGMHubHealth && window.CGMHubHealth.cachedDay(todayKey()); return !!s && r.base != null && s.steps >= r.base + 1000; } },
+    { base: 'cycle', pri: 8, xp: 5, icon: '🌸', text: (c) => c.phase === 'luteal' ? 'Luteal phase: sugars can run higher. Extra water and a gentle walk today' : 'Period days: be gentle with yourself. A warm drink counts 💛',
+      show: (c) => { try { const F = window.CGMHubFeatures; const m = F.cycleModel(); const p = m.cycles.length && F.phaseAt(c.now, m); if (p && (p.phase === 'luteal' || p.phase === 'menstrual')) { c.phase = p.phase; return true; } } catch (e) { /* no cycle data */ } return false; } },
+    { base: 'ins', pri: 8, xp: 10, icon: '💡', multi: true }, // from your top patterns, built below
+    { base: 'care', pri: 9, xp: 5, icon: '💖', multi: true }, // small self-care, rotates every 3 hours
+  ];
+  const SIDE_BY = Object.fromEntries(SIDE.map((d) => [d.base, d]));
+  const CARE = [['breathe', '🌬️', 'One minute of slow breaths'], ['kind', '💖', 'Do one nice thing for yourself'], ['sunlight', '🌤️', '5 minutes of fresh air'], ['stretch', '🧘', 'Stretch for 2 minutes'], ['sip', '🫖', 'Make yourself a drink you like'], ['tidy', '🧺', 'Restock your low snacks'], ['text', '💬', 'Message someone you like']];
+
+  // the multi-quests (one per med dose, insight, self-care) for right now
+  function multiSide (c) {
+    const out = [];
+    const block = Math.floor(c.hour / 3);
+    // 💊 scheduled doses 30+ min past due and not logged
+    const meds = window.CGMHubLogHub ? window.CGMHubLogHub.meds() : [];
+    for (const m of meds) {
+      if (!Array.isArray(m.times) || !m.name) continue;
+      const taken = c.trs.filter((t) => t.t >= c.d0 && t.kind === 'med' && String(t.medName || t.notes || '').toLowerCase().startsWith(m.name.toLowerCase())).length;
+      m.times.forEach((time, n) => {
+        const [h, mm] = time.split(':').map(Number);
+        if (c.now > c.at(h, mm + 30) && taken <= n) out.push({ id: 'med:' + m.name + ':' + n, def: SIDE_BY.med, text: `Take your ${m.name}${m.dose ? ' (' + m.dose + ')' : ''}`, why: 'Due ' + C.clockTime(c.at(h, mm)) });
+      });
+    }
+    // 💡 from your top patterns (not the one already in today's quests)
+    const daily = (G.quests[todayKey()] || {}).ids || [];
+    (latestInsights || []).filter((i) => INSIGHT_QUEST[i.id]).slice(0, 3).forEach((i) => {
+      const q = INSIGHT_QUEST[i.id].find((id) => QUESTS[id] && QUESTS[id].manual && !daily.includes(id));
+      if (q && !out.some((o) => o.qid === q)) out.push({ id: 'ins:' + q, qid: q, def: SIDE_BY.ins, icon: QUESTS[q].icon, text: QUESTS[q].text, why: i.icon + ' ' + i.title, logs: QUESTS[q].logs });
+    });
+    // 💖 two small self-care ideas, rotating every 3 hours
+    const s = hash(todayKey() + ':' + block);
+    [CARE[s % CARE.length], CARE[(s >>> 8) % CARE.length]].filter((x, i, a) => a.indexOf(x) === i)
+      .forEach(([id, ic, text]) => out.push({ id: 'care:' + id + '@' + block, def: SIDE_BY.care, icon: ic, text }));
+    return out;
+  }
+
+  // what's open right now + auto-finish anything done; returns { open, done, xp }
+  function sideQuests () {
+    if (!C.entries.length && !C.treatments.length) return { open: [], done: 0, xp: 0 };
+    const c = sideCtx(), k = todayKey(), day = sideDay(k);
+    const block = Math.floor(c.hour / 3);
+    const live = [];
+    for (const d of SIDE) {
+      if (d.multi) continue;
+      let r = false; try { r = d.show(c); } catch (e) { r = false; }
+      if (!r) continue;
+      live.push({ id: d.base + (d.block ? '@' + block : ''), def: d, base: r && r.base != null ? r.base : undefined });
+    }
+    live.push(...multiSide(c));
+    for (const q of live) if (!day.at[q.id]) day.at[q.id] = { t: c.now, base: q.base };
+    // auto-finish (also ones offered earlier whose situation has passed)
+    let total = Object.values(day.done).reduce((a, b) => a + b, 0);
+    const finished = [];
+    for (const id of Object.keys(day.at)) {
+      if (day.done[id] != null) continue;
+      const d = SIDE_BY[id.split(/[@:]/)[0]];
+      if (!d || !d.check) continue;
+      let ok = false; try { ok = d.check(c, day.at[id]); } catch (e) { ok = false; }
+      if (ok) { const xp = Math.max(0, Math.min(d.xp, SIDE_XP_CAP - total)); day.done[id] = xp; total += xp; finished.push(d); }
+    }
+    if (finished.length) { toast('✨ Side quest done! +' + finished.reduce((a, d) => a + d.xp, 0) + ' XP'); }
+    // tidy old days
+    for (const key of Object.keys(G.side)) if (keyToTime(key) < keyToTime(k) - 14 * DAY) { G.sideOld = (G.sideOld || 0) + Object.keys(G.side[key].done).length; delete G.side[key]; }
+    save();
+    const open = live.filter((q) => day.done[q.id] == null).map((q) => {
+      const d = q.def, rec = day.at[q.id];
+      return {
+        id: q.id, pri: d.pri, xp: d.xp, icon: q.icon || d.icon, auto: !!d.check, action: d.action, logs: q.logs || d.logs,
+        text: q.text || d.text(c, rec), why: q.why || (d.why ? d.why(c) : ''),
+      };
+    }).sort((a, b) => a.pri - b.pri);
+    return { open, done: Object.keys(day.done).length, xp: total };
+  }
+  function finishSide (q) {
+    const day = sideDay(todayKey());
+    if (day.done[q.id] != null) return;
+    const total = Object.values(day.done).reduce((a, b) => a + b, 0);
+    day.done[q.id] = Math.max(0, Math.min(q.xp, SIDE_XP_CAP - total));
+    save();
+    if (q.logs) C.apiPostTreatment(Object.assign({ created_at: new Date().toISOString(), enteredBy: 'CGM Hub' }, q.logs)).catch(() => { /* the quest still counts */ });
+  }
+  function sideRow (q, compact) {
+    const row = el('div', 'quest side' + (compact ? ' compact' : ''));
+    row.appendChild(el('span', 'q-ic', q.icon));
+    const mid = el('div', 'grow');
+    mid.appendChild(el('div', 'q-text', q.text));
+    const sub = [q.why, '+' + q.xp + ' XP', q.auto ? 'checks itself' : ''].filter(Boolean).join(' · ');
+    mid.appendChild(el('div', 'muted small', sub));
+    row.appendChild(mid);
+    const btns = el('div', 'q-btns');
+    if (q.action) { const a = el('button', 'btn slim', q.action[0]); a.type = 'button'; a.addEventListener('click', (e) => { e.stopPropagation(); q.action[1](); }); btns.appendChild(a); }
+    if (!q.auto) { const b = el('button', 'btn slim primary', 'Done'); b.type = 'button'; b.addEventListener('click', (e) => { e.stopPropagation(); finishSide(q); confetti(); render(); }); btns.appendChild(b); }
+    row.appendChild(btns);
+    return row;
+  }
+  let sideAll = false;
+  function renderSide (sq) {
+    // Game tab
+    const box = $('side-list');
+    if (box) {
+      box.textContent = '';
+      const list = sideAll ? sq.open : sq.open.slice(0, 5);
+      if (!sq.open.length) box.appendChild(el('p', 'muted small', 'Nothing right now. New ones pop up as your day changes.'));
+      list.forEach((q) => box.appendChild(sideRow(q)));
+      $('side-more').hidden = sq.open.length <= 5;
+      $('side-more').textContent = sideAll ? 'Show fewer' : `Show all ${sq.open.length}`;
+      $('side-sum').textContent = sq.done ? `✅ ${sq.done} done today · +${sq.xp} XP` : 'Totally optional · bonus XP';
+    }
+    // Home: the top 2 as gentle reminders
+    const home = $('side-home');
+    if (home) {
+      home.textContent = '';
+      home.hidden = !sq.open.length || C.S.sideHome === false;
+      if (!home.hidden) {
+        const head = el('div', 'card-head');
+        head.appendChild(el('h2', null, '✨ Side quests'));
+        const more = el('button', 'link', sq.open.length > 2 ? `All ${sq.open.length} ›` : 'More ›'); more.type = 'button'; more.addEventListener('click', () => C.go('game'));
+        head.appendChild(more);
+        home.appendChild(head);
+        sq.open.slice(0, 2).forEach((q) => home.appendChild(sideRow(q, true)));
+        home.appendChild(el('div', 'muted small', 'Optional bonus XP. Skip any of them, no streaks lost.'));
+      }
+    }
+  }
+
   // ---------- scoring a day ----------
   function scoreDay (k, trs) {
     const t0 = keyToTime(k), t1 = t0 + DAY;
@@ -271,14 +468,17 @@
     const nDone = states.filter((s) => s.done).length;
     add(`Quests done: ${nDone}/3`, nDone * 30, '⚔️');
     if (nDone === 3) add('All quests bonus', 30, '🏆');
+    { const sd = (G.side || {})[k]; const n = sd ? Object.keys(sd.done).length : 0; if (n) add(`Side quests ×${n}`, Object.values(sd.done).reduce((a, b) => a + b, 0), '✨'); }
 
     const xp = items.reduce((s, x) => s + x.xp, 0);
     return { xp, items, d, logged: dayTrs.length > 0, tir, quests: ids.map((id, n) => ({ id, ...states[n] })), nDone };
   }
 
   // ---------- full game state ----------
+  let lastSide = { open: [], done: 0, xp: 0 };
   async function compute () {
     const trs = await allTreatments();
+    try { lastSide = sideQuests(); } catch (e) { console.error(e); }
     if (!G.quests[todayKey()]) { try { latestNutrient = pickNutrient(trs); } catch (e) { latestNutrient = null; } }
     finishExperimentIfDue();
     if (!G.quests[todayKey()] && window.CGMHubInsights && C.entries.length) {
@@ -335,6 +535,7 @@
     ['l20', '🌠', 'Level 20', 'Reach level 20', (s) => s.level >= 20],
     ['scientist', '🧪', 'Scientist', 'Finish a 7-day experiment (5+ days)', () => (G.pastExperiments || []).some((e) => e.success)],
     ['nutrition', '🥗', 'Well fed', 'Finish 5 nutrient quests', () => Object.keys(G.nutDone || {}).length >= 5],
+    ['adventurer', '🗺️', 'Adventurer', 'Finish 25 side quests', () => Object.values(G.side || {}).reduce((a, d) => a + Object.keys(d.done).length, 0) + (G.sideOld || 0) >= 25],
   ];
 
   // ---------- celebrations ----------
@@ -380,7 +581,7 @@
 
   let lastState = null;
   async function render () {
-    if (!G.on) { $('pet-card').hidden = true; return; }
+    if (!G.on) { $('pet-card').hidden = true; if ($('side-home')) $('side-home').hidden = true; return; }
     const s = await compute();
     lastState = s;
     const L = s.level, cur = s.total - xpForLevel(L), need = xpForLevel(L + 1) - xpForLevel(L);
@@ -413,6 +614,7 @@
     if (newBadges.length && L <= (G.seenLevel || 1)) confetti();
     G.seenXp = s.total; G.seenLevel = L; save();
 
+    renderSide(lastSide);
     if (!$('view-game').hidden) renderGameView(s, mood, msg);
   }
 
@@ -535,6 +737,9 @@
     $('pet-pick').hidden = true;
     render();
   });
+  $('set-side-home').checked = C.S.sideHome !== false;
+  $('set-side-home').addEventListener('change', () => { C.S.sideHome = $('set-side-home').checked; C.saveSettings(); renderSide(lastSide); });
+  $('side-more').addEventListener('click', () => { sideAll = !sideAll; renderSide(lastSide); });
   $('quest-reroll').addEventListener('click', () => {
     const k = todayKey();
     G.rerolls[k] = (G.rerolls[k] || 0) + 1;

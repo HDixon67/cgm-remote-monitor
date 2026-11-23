@@ -543,3 +543,28 @@ li.tap:focus-visible { outline: 2px solid var(--accent, #7aa2ff); outline-offset
 .edit-actions { display: flex; gap: 10px; justify-content: space-between; margin-top: 12px; }
 .edit-actions .btn { flex: 1; }
 .btn.danger { background: transparent; border: 1px solid var(--low); color: var(--low); }
+
+/* side quests */
+.quest.side { flex-wrap: wrap; }
+.quest.side .grow { flex: 1 1 170px; }
+.quest.side .q-btns { display: flex; gap: 6px; flex-shrink: 0; margin-left: auto; }
+.quest.side.compact { padding: 10px 0; }
+.quest.side.compact .q-ic { font-size: 1.3rem; width: 28px; }
+.side-home .card-head { margin-bottom: 2px; }
+
+/* did you eat? */
+.did-eat { border: 1px solid var(--accent); }
+.did-eat .de-title { font-weight: 700; font-size: 1.05rem; }
+.did-eat p { margin: 4px 0 10px; }
+.de-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn.ghost { background: transparent; border-color: var(--line); color: var(--text-2); }
+
+/* the usual */
+.usual { margin-bottom: 8px; }
+.usual-row { display: flex; gap: 10px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+.usual-row:first-child { border-top: 0; }
+.usual-btns { display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
+.usual-btns .btn { min-height: 38px; }
+.usual-out.ok { color: var(--in, #4caf50); }
+.usual-out.high { color: var(--high, #e8a33d); }
+.usual-out.low { color: var(--low); }
