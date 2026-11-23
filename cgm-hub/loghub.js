@@ -21,6 +21,7 @@
     $('sheet-title').textContent = TITLES[name] || 'Log';
     F.showLogTab(name);
     if (name === 'food' && !$('log-time').value) $('log-time').value = nowInput();
+    if (name === 'food' && window.CGMHubUsual) window.CGMHubUsual.render();
     if (name === 'rapid') { $('rapid-name').value = C.S.rapidName || ''; $('rapid-time').value = nowInput(); }
     if (name === 'bg') { $('bg-time').value = nowInput(); document.querySelectorAll('.unit-label').forEach((e) => { e.textContent = C.unitLabel(); }); }
     if (name === 'note') $('note-time').value = nowInput();

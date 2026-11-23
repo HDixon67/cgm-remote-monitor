@@ -9,7 +9,7 @@
   let cfg = null;
 
   const defaults = () => ({
-    v: 1, meds: [], bedtime: { on: true, time: '22:00' }, bolusCheck: { on: true }, quests: { on: false, time: '19:00' }, custom: [],
+    v: 1, meds: [], bedtime: { on: true, time: '22:00' }, bolusCheck: { on: true }, didEat: { on: true }, quests: { on: false, time: '19:00' }, custom: [],
   });
 
   async function load () {
@@ -24,6 +24,7 @@
     const body = Object.assign({}, cfg, extra || {}, {
       tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
       units: C.S.units,
+      lowMg: Math.round(C.toMg(C.S.low)),
       appUrl: location.href.split('#')[0],
       savedAt: Date.now(),
     });
@@ -69,6 +70,7 @@
     box.appendChild(row('🌙 Bedtime glucose check', 'with your current number', cfg.bedtime.on, cfg.bedtime.time, (on, time) => { cfg.bedtime = { on, time }; }));
     box.appendChild(row('⚔️ Quest nudge', '', cfg.quests.on, cfg.quests.time, (on, time) => { cfg.quests = { on, time }; }));
     box.appendChild(row('🍽️ Bolus check', 'carbs logged but no insulin 15 min later', cfg.bolusCheck.on, undefined, (on) => { cfg.bolusCheck = { on }; }));
+    box.appendChild(row('🍽️ Did you eat?', 'a fast rise with nothing logged (not 12–6 AM)', (cfg.didEat || { on: true }).on, undefined, (on) => { cfg.didEat = { on }; }));
 
     box.appendChild(el('div', 'split-title', '🔔 Your own reminders'));
     (cfg.custom || []).forEach((c, i) => {

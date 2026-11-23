@@ -305,6 +305,12 @@
   $('basket-clear').addEventListener('click', () => { basket = []; renderBasket(); $('log-carbs').value = ''; $('log-note').value = ''; });
 
   function favs () { return Array.isArray(C.S.meals) ? C.S.meals : []; }
+  // load a favourite into the meal; the note is the favourite's name so "The usual" can find it again
+  function useFav (m) {
+    basket = (m.items || []).map((x) => recompute(normalizeItem(x)));
+    renderBasket(); syncBasketToLog();
+    $('log-note').value = m.name;
+  }
   function renderFavs () {
     const box = $('fav-list');
     box.textContent = '';
@@ -314,10 +320,7 @@
       const chip = el('button', 'chip', m.name);
       chip.type = 'button';
       chip.appendChild(el('small', null, Math.round(m.carbs) + 'g'));
-      chip.addEventListener('click', () => {
-        basket = m.items.map((x) => recompute(normalizeItem(x)));
-        renderBasket(); syncBasketToLog();
-      });
+      chip.addEventListener('click', () => useFav(m));
       chip.addEventListener('contextmenu', (ev) => {
         ev.preventDefault();
         if (confirm('Remove “' + m.name + '” from favourites?')) { C.S.meals = favs().filter((_, j) => j !== i); C.saveSettings(); renderFavs(); }
@@ -662,5 +665,5 @@
   renderRecents();
   $('set-fdc').value = C.S.fdcKey || '';
   $('set-fdc-save').addEventListener('click', () => { C.S.fdcKey = $('set-fdc').value.trim(); C.saveSettings(); C.showMsg('fdc-msg', C.S.fdcKey ? '✅ Saved. Food search will use your key.' : 'Cleared. Using the shared key.', 'ok'); });
-  window.CGMHubFeatures = { showLogTab, cycleModel, phaseAt, renderPeriodPanel, phaseName };
+  window.CGMHubFeatures = { favs, useFav, showLogTab, cycleModel, phaseAt, renderPeriodPanel, phaseName };
 })();

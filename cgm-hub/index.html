@@ -39,6 +39,7 @@
         </div>
       </div>
       <button class="card pet-card" id="pet-card" type="button" hidden aria-label="Open your pet and quests"></button>
+      <div class="card side-home" id="side-home" hidden></div>
 
       <div class="card chart-card">
         <div class="chart-head">
@@ -161,6 +162,10 @@
           <div class="sheet-head"><h2 id="sheet-title">Log</h2><button class="link" id="sheet-close" type="button">Done</button></div>
 
           <div data-logpanel="food" hidden>
+            <div class="usual" id="usual-wrap" hidden>
+              <div class="split-title">🔁 The usual</div>
+              <div id="usual-list"></div>
+            </div>
             <form class="search-row" id="food-form">
               <input type="search" id="food-q" placeholder="e.g. banana, tortilla, Cheerios" autocomplete="off" enterkeyhint="search">
               <button class="btn primary slim" id="food-go">Search</button>
@@ -354,6 +359,12 @@
         <div class="card-head"><h2>⚔️ Today’s quests</h2><button class="link" id="quest-reroll" type="button">🎲 New quests</button></div>
         <div id="quest-list"></div>
         <p class="muted small">+30 XP each, +30 bonus for all three. New quests every day. You can swap them once a day (before finishing any).</p>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>✨ Side quests</h2><span class="muted small" id="side-sum"></span></div>
+        <p class="muted small">Little extras that fit right now. They change with your numbers and the time of day. Do any, skip any. Nothing breaks if you ignore them.</p>
+        <div id="side-list"></div>
+        <button class="link" id="side-more" type="button" hidden>Show all</button>
       </div>
       <div class="card">
         <h2>✨ Today’s XP</h2>
@@ -629,6 +640,7 @@
         <h2>🎮 Game</h2>
         <label class="check"><input type="checkbox" id="game-toggle"> Show my pet, XP and quests</label>
         <label class="check"><input type="checkbox" id="set-brief" checked> Show the ☀️ morning brief once each morning</label>
+        <label class="check"><input type="checkbox" id="set-side-home" checked> Show ✨ side quests on Home</label>
       </div>
       <p class="foot muted small">CGM Hub is a personal tool, not a medical device. Always double-check doses. Keep your Libre app alarms on.</p>
     </section>
@@ -685,5 +697,7 @@
   <script src="history.js"></script>
   <script src="brief.js"></script>
   <script src="edit.js"></script>
+  <script src="dideat.js"></script>
+  <script src="usual.js"></script>
 </body>
 </html>
