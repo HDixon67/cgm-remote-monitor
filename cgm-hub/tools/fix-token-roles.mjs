@@ -5,7 +5,9 @@ import crypto from 'node:crypto';
 
 const NS = (process.env.NIGHTSCOUT_INTERNAL_URL || 'http://sunset-cast:8080').replace(/\/+$/, '');
 const MODE = process.env.FIX_MODE || 'list';
-const NEEDED = (process.env.FIX_ROLES || 'readable careportal').split(/\s+/).filter(Boolean);
+const NEEDED = (process.env.FIX_ROLES || 'readable careportal cgmhub-edit').split(/\s+/).filter(Boolean);
+// custom role so CGM Hub can edit and delete saved logs (Nightscout has no built-in role for this)
+const CUSTOM = { 'cgmhub-edit': ['api:treatments:update', 'api:treatments:delete'] };
 const headers = { 'api-secret': crypto.createHash('sha1').update(process.env.API_SECRET || '').digest('hex'), Accept: 'application/json', 'Content-Type': 'application/json' };
 const call = async (method, path, body) => {
   const res = await fetch(NS + '/api/v2/authorization' + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
@@ -24,6 +26,13 @@ const list = async () => {
 
 const subs = await list();
 if (MODE === 'fix') {
+  const have = ((await call('GET', '/roles')).json || []).map((x) => x.name);
+  for (const name of NEEDED) {
+    if (CUSTOM[name] && !have.includes(name)) {
+      const c = await call('POST', '/roles', { name, permissions: CUSTOM[name], notes: 'CGM Hub: edit and delete logs' });
+      console.log('created role', name, JSON.stringify(CUSTOM[name]), 'status', c.status);
+    }
+  }
   const s = subs.find((x) => String(x.name).toLowerCase() === 'cgmhub');
   if (!s) {
     const c = await call('POST', '/subjects', { name: 'cgmhub', roles: NEEDED, notes: 'CGM Hub app' });

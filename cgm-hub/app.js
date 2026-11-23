@@ -112,6 +112,32 @@
     if (res.status === 401 || res.status === 403) throw new Error('Nightscout said no. Your token needs the "careportal" role.');
     if (!res.ok) throw new Error('Nightscout error ' + res.status);
   }
+  // editing saved logs: Nightscout needs the token to have treatment update/delete permission
+  const NO_EDIT = 'Nightscout won’t let CGM Hub change saved logs yet. Your token needs the “cgmhub-edit” role (a one-time fix).';
+  async function apiPutTreatment (t) {
+    if (S.demo) { const i = demoStore.treatments.findIndex((x) => x._id === t._id); if (i >= 0) demoStore.treatments[i] = t; return; }
+    const res = await fetch(apiUrl('/api/v1/treatments'), { method: 'PUT', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(t) });
+    if (res.status === 401 || res.status === 403) throw new Error(NO_EDIT);
+    if (!res.ok) throw new Error('Nightscout error ' + res.status);
+  }
+  async function apiDeleteTreatment (id) {
+    if (S.demo) { demoStore.treatments = demoStore.treatments.filter((x) => x._id !== id); return; }
+    const res = await fetch(apiUrl('/api/v1/treatments/' + encodeURIComponent(id)), { method: 'DELETE', headers: { Accept: 'application/json' } });
+    if (res.status === 401 || res.status === 403) throw new Error(NO_EDIT);
+    if (!res.ok) throw new Error('Nightscout error ' + res.status);
+  }
+  // make a log row tappable to edit it (edit.js provides the editor)
+  function tappable (li, t) {
+    if (!t || !t._id || !t.raw) return li;
+    li.classList.add('tap');
+    li.tabIndex = 0;
+    li.setAttribute('role', 'button');
+    li.setAttribute('aria-label', 'Edit ' + treatmentLabel(t) + ' at ' + clockTime(t.t));
+    const open = () => { if (window.CGMHubEdit) window.CGMHubEdit.open(t); };
+    li.addEventListener('click', open);
+    li.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+    return li;
+  }
 
   function normEntries (arr) {
     return arr
@@ -127,6 +153,7 @@
   }
   function normTreatments (arr) {
     return arr.map((t) => ({
+      _id: t._id, raw: t,
       t: treatmentTime(t),
       insulin: Number(t.insulin) || 0,
       carbs: Number(t.carbs) || 0,
@@ -476,7 +503,7 @@
       if (it.t.insulin && it.iob > 0) right.appendChild(el('div', null, `${it.iob.toFixed(1)}u of ${r1(it.t.insulin)}u`));
       if (it.t.carbs && it.cob > 0) right.appendChild(el('div', null, `${Math.round(it.cob)}g of ${Math.round(it.t.carbs)}g`));
       li.appendChild(right);
-      ul.appendChild(li);
+      ul.appendChild(tappable(li, it.t));
     }
   }
 
@@ -696,7 +723,7 @@
       if (t.insulin) right.appendChild(el('div', null, r1(t.insulin) + 'u' + (isBasal(t) ? ' basal' : '')));
       if (t.carbs) right.appendChild(el('div', null, Math.round(t.carbs) + 'g'));
       li.appendChild(right);
-      ul.appendChild(li);
+      ul.appendChild(tappable(li, t));
     }
   }
   function showMsg (id, text, kind) {
@@ -931,6 +958,7 @@
       trs.push({ created_at: st.toISOString(), eventType: 'Period Start', notes: 'Period started', enteredBy: 'demo' });
       trs.push({ created_at: new Date(st.getTime() + 4 * DAY).toISOString(), eventType: 'Period End', notes: 'Period ended', enteredBy: 'demo' });
     }
+    trs.forEach((t, i) => { t._id = 'demo-' + i; });
     return { entries: ents, treatments: trs };
   }
 
@@ -1015,7 +1043,7 @@
   // internal API for features.js
   window.CGMHubCore = {
     get S () { return S; }, get entries () { return entries; }, get treatments () { return treatments; }, get periods () { return periods; },
-    hooks, apiGet, apiUrl, apiPostTreatment, refresh, saveSettings, go, showMsg, normEntries, normTreatments, isBasal, stats,
+    hooks, apiGet, apiUrl, apiPostTreatment, apiPutTreatment, apiDeleteTreatment, tappable, refresh, saveSettings, go, showMsg, normEntries, normTreatments, isBasal, stats,
     $, el, sv, fmtBG, toMg, fromMg, mmol, unitLabel, clockTime, durText, toLocalInput, statusOf, treatmentLabel, iconFor,
     MIN, HOUR, DAY, MGDL_PER_MMOL,
   };

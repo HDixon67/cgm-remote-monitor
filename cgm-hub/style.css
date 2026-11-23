@@ -534,3 +534,12 @@ svg.hist-chart { width: 100%; height: 220px; display: block; margin-top: 10px; }
 .exp-dot.now { outline: 2px solid var(--ins); }
 .exp-dot.miss { opacity: .45; }
 .exp-btn { margin-top: 10px; width: 100%; padding: 12px; }
+
+/* tap a saved log to edit it */
+li.tap { cursor: pointer; border-radius: 10px; }
+li.tap:hover, li.tap:focus-visible { background: var(--card-2); }
+li.tap:focus-visible { outline: 2px solid var(--accent, #7aa2ff); outline-offset: 1px; }
+#edit-sheet { z-index: 30; }
+.edit-actions { display: flex; gap: 10px; justify-content: space-between; margin-top: 12px; }
+.edit-actions .btn { flex: 1; }
+.btn.danger { background: transparent; border: 1px solid var(--low); color: var(--low); }
