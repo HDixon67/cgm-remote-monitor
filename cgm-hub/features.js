@@ -258,9 +258,22 @@
       $('scan-status').textContent = 'Couldn’t reach the food database. Check your connection.';
     }
   }
+  // in the Android app: Google's scanner (fast, needs no camera permission)
+  const nativeScan = () => { const cap = window.Capacitor; return cap && cap.isNativePlatform && cap.isNativePlatform() && cap.Plugins && cap.Plugins.BarcodeScan; };
   async function openScanner () {
     $('scanner').hidden = false;
     $('scan-code').value = '';
+    const NS = nativeScan();
+    if (NS) {
+      $('scan-video').hidden = true;
+      $('scan-status').textContent = 'Opening the scanner…';
+      try {
+        const r = await NS.scan();
+        if (r && r.code) { lookupBarcode(r.code); return; }
+        $('scan-status').textContent = 'Scan cancelled. Tap 📷 to try again, or type the numbers under the barcode.';
+        return;
+      } catch (e) { /* fall back to the in-page camera */ }
+    }
     const supported = 'BarcodeDetector' in window && navigator.mediaDevices && navigator.mediaDevices.getUserMedia;
     $('scan-video').hidden = !supported;
     if (!supported) { $('scan-status').textContent = 'Camera scanning isn’t supported in this browser (it works in Chrome on Android). Type the numbers under the barcode instead.'; return; }
@@ -281,7 +294,10 @@
       }, 300);
     } catch (e) {
       $('scan-video').hidden = true;
-      $('scan-status').textContent = 'Couldn’t open the camera (permission blocked?). Type the barcode numbers instead.';
+      const app = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+      $('scan-status').textContent = e && e.name === 'NotAllowedError'
+        ? 'Camera permission is off. ' + (app ? 'Turn it on in Android Settings → Apps → CGM Hub → Permissions → Camera.' : 'Allow the camera for this site in your browser settings.') + ' Or type the numbers under the barcode.'
+        : 'Couldn’t open the camera. Type the numbers under the barcode instead.';
     }
   }
   $('scan-open').addEventListener('click', openScanner);
