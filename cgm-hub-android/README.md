@@ -21,3 +21,8 @@ The signing key lives only in the `ANDROID_KEYSTORE_B64` repository secret (base
 `cgmhub`). Keep a backup copy: without the same key, Android won't install updates over the old app.
 
 Health data is read on the phone and saved to your own Nightscout as one `Health Summary` treatment per day.
+
+## Home-screen widget
+Long-press the home screen → Widgets → CGM Hub. It shows glucose, arrow, change, time, insulin on board and the top side quest or next med, coloured low / in range / high (grey when the reading is over 15 minutes old).
+- While the app is open, the web app sends updates through the `Widget` plugin (`WidgetPlugin.kt`).
+- In the background, `WidgetWorker` fetches the latest reading from Nightscout every ~15 minutes (Android's minimum) using the address and token the app handed over (kept in the app's private storage).
