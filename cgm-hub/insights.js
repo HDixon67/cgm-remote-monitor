@@ -578,31 +578,42 @@
     const slot = ins.slot ? SLOT[ins.slot].replace(/^\S+\s/, '').toLowerCase() : 'meal';
     const block = ins.block ? ins.block.replace(/^\S+\s/, '').toLowerCase() : 'that time';
     const E = {
-      nightlows: 'For the next 3 nights, check before bed. If you’re under 7, have a small snack with protein. Then see if the overnight lows change. (Basal changes: with your diabetes team.)',
-      dawn: 'On 3 nights this week, finish dinner before 8 PM, then compare your 3–7 AM rise to other nights.',
-      mealspike: `For your next 5 ${slot}s, take a 10-minute walk right after eating and watch whether the spike gets smaller.`,
-      meallows: `For your next 3 ${slot}s, keep a small snack ready 2–3 hours later and note what you ate.`,
-      rebound: 'For your next 3 lows, use exactly 15 g of fast sugar, wait 15 minutes, then check again before eating more.',
-      stacked: 'For one week, check “insulin on board” on the Home screen before any correction.',
-      unlogged: 'For 3 days, log every snack and drink with carbs, even small ones.',
-      toughhigh: `On 4 days this week, move for 10 minutes during the ${block}.`,
-      lowblock: `This week, carry fast sugar during the ${block} and try a small snack just before it on 3 days.`,
+      nightlows: 'Each night this week, check before bed. If you’re under 7, have a small snack with protein, then see if the overnight lows change. (Basal changes: with your diabetes team.)',
+      dawn: 'Each day this week, finish dinner before 8 PM if you can, then compare your 3–7 AM rise.',
+      mealspike: `Each day this week, take a 10-minute walk right after ${slot} and watch whether the spike gets smaller.`,
+      meallows: `Each day this week, keep a small snack ready 2–3 hours after ${slot}.`,
+      rebound: 'This week, treat every low with 15 g of fast sugar, wait 15 minutes, then check again before eating more.',
+      stacked: 'Each day this week, check “insulin on board” on the Home screen before any correction.',
+      unlogged: 'Each day this week, log every snack and drink with carbs, even small ones.',
+      toughhigh: `Each day this week, move for 10 minutes during the ${block}.`,
+      lowblock: `Each day this week, carry fast sugar during the ${block} and try a small snack just before it.`,
       lowtime: 'This week, add a quick note (Log → 📝) whenever you go low: what happened just before?',
-      variability: 'For one week, eat veggies or protein first at one meal a day.',
+      variability: 'Each day this week, eat veggies or protein first at one meal.',
       weekend: 'This weekend, keep meal times within an hour of your weekday times.',
       foods: 'Next time you have one of these foods, double-check the carbs with a scan or search and walk after.',
       longhigh: 'Next long high: drink water, check your pen needle and insulin, and add a note about anything unusual.',
-      nobolus: 'For one week, keep your pen where you eat and log the dose with the meal (Bolus → Log this).',
-      latebolus: 'For one week, make “pen out” the first thing you do when food arrives.',
-      exerciselow: 'After your next 3 workouts, have a carb + protein snack and check before bed.',
-      latedinner: 'On 3 nights, finish dinner by 8 PM and compare the next mornings.',
-      compression: 'For 3 nights, sleep on the side without your sensor, or place the next sensor on your less-slept-on arm.',
+      nobolus: 'Each day this week, keep your pen where you eat and log the dose with the meal (Bolus → Log this).',
+      latebolus: 'Each day this week, make “pen out” the first thing you do when food arrives.',
+      exerciselow: 'This week, after any workout, have a carb + protein snack and check before bed.',
+      latedinner: 'Each day this week, finish dinner by 8 PM if you can and compare the next mornings.',
+      compression: 'Each night this week, sleep on the side without your sensor (or put your next sensor on your less-slept-on arm).',
       meds: 'Keep logging this every day for 2 more weeks so the pattern is clearer.',
       mood: 'Check in each morning this week (it takes 5 seconds), and on rough days pick one small thing to do for yourself.',
     };
     return E[ins.id] || '';
   }
 
+  // "Start this 7-day experiment" (game.js tracks it)
+  function expButton (ins) {
+    const G = window.CGMHubGame;
+    const cur = G && G.experiment;
+    const running = cur && !cur.finished && cur.id === ins.id;
+    const b = el('button', 'btn slim exp-btn' + (running ? '' : ' primary'), running ? '🧪 Running: open it' : '🧪 Start this 7-day experiment');
+    b.type = 'button';
+    b.addEventListener('click', (e) => { e.stopPropagation(); if (window.CGMHubBrief) window.CGMHubBrief.close(); if (G) G.startExperiment(ins); });
+    if (!G) b.hidden = true;
+    return b;
+  }
   function dotRow (dots) {
     const row = el('div', 'dot-row');
     for (const d of dots.slice(-21)) {
@@ -626,6 +637,7 @@
       const ex = el('div', 'experiment');
       ex.appendChild(el('div', 'ex-kicker', '🧪 EXPERIMENT'));
       ex.appendChild(el('p', null, ins.experiment));
+      ex.appendChild(expButton(ins));
       card.appendChild(ex);
     }
     const d = el('details'); d.appendChild(el('summary', null, 'Details'));
@@ -663,7 +675,7 @@
       if (ins.dots) { card.appendChild(dotRow(ins.dots)); card.appendChild(el('div', 'muted small', ins.occ)); }
       if (ins.experiment) {
         const d = el('details'); d.appendChild(el('summary', null, '🧪 Experiment'));
-        d.appendChild(el('p', 'small', ins.experiment)); card.appendChild(d);
+        d.appendChild(el('p', 'small', ins.experiment)); d.appendChild(expButton(ins)); card.appendChild(d);
       }
       if (ins.causes.length) {
         const d = el('details'); d.appendChild(el('summary', null, '🤔 What might be causing it'));

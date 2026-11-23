@@ -100,6 +100,18 @@
     sleepside: { icon: '🛏️', text: 'Sleep on your non-sensor side tonight', manual: true, insight: true },
     routine: { icon: '🗓️', text: 'Eat at your usual weekday times today', manual: true, insight: true },
   };
+  // nutrient quest: target comes from your own last-7-days averages (see pickNutrient)
+  QUESTS.nutrient = {
+    icon: '🥗', special: true,
+    text: (p) => (p ? (p.kind === 'max' ? `Keep ${p.label.toLowerCase()} under ${p.goal} ${p.unit} today` : `Get ${p.goal} ${p.unit} of ${p.label.toLowerCase()} today`) : 'Eat a balanced meal'),
+    auto: (d, k) => {
+      const p = (G.quests[k] || {}).nut;
+      if (!p) return [0, 1];
+      const v = (d.nut || {})[p.key] || 0;
+      if (p.kind === 'max') { const late = k !== todayKey() || new Date().getHours() >= 20; return [late && d.meals >= 2 && v <= p.goal ? 1 : 0, 1]; }
+      return [Math.round(v * 10) / 10, p.goal];
+    },
+  };
   // which quest helps with which insight
   const INSIGHT_QUEST = {
     nightlows: ['juicebed', 'bedcheck'], dawn: ['morning', 'bedcheck'], meallows: ['snackready'], rebound: ['rule1515'],
@@ -108,6 +120,34 @@
     latebolus: ['pennear'], exerciselow: ['exsnack'], latedinner: ['dinnerEarly'], compression: ['sleepside'], weekend: ['routine'],
   };
   let latestInsights = null;
+  let latestNutrient = null;
+  // lowest nutrient over the last 7 days (needs full-nutrition meals on 3+ days); goal = halfway to target
+  function pickNutrient (trs) {
+    const N = window.CGMHubNutrition;
+    if (!N) return null;
+    const t0 = keyToTime(todayKey());
+    const recent = trs.filter((t) => t.t >= t0 - 7 * DAY && t.t < t0);
+    const { sum, days } = N.totalsOf(recent);
+    if (days < 3) return null;
+    const tg = N.targets();
+    const round = (v, unit) => (unit === 'g' ? Math.max(1, Math.round(v)) : unit === 'mg' ? Math.round(v / 10) * 10 : Math.round(v * 10) / 10);
+    let best = null;
+    for (const n of N.NUTS) {
+      if (n.kind !== 'min' || !tg[n.key] || sum[n.key] == null || n.key === 'vitD') continue; // vitamin D: hard to get from food, usually a supplement
+      const avg = sum[n.key] / days, pct = avg / tg[n.key];
+      if (pct < 0.7 && (!best || pct < best.pct)) best = { n, avg, pct };
+    }
+    if (best) {
+      const goal = round(best.avg + (tg[best.n.key] - best.avg) / 2, best.n.unit);
+      return { key: best.n.key, label: best.n.label, unit: best.n.unit, kind: 'min', goal, why: `🥗 You average ${round(best.avg, best.n.unit)} ${best.n.unit} ${best.n.label.toLowerCase()}/day (target ${tg[best.n.key]}). Halfway there is today’s goal.` };
+    }
+    for (const n of N.NUTS) {
+      if (n.kind !== 'max' || !tg[n.key] || sum[n.key] == null) continue;
+      const avg = sum[n.key] / days;
+      if (avg > tg[n.key] * 1.1) return { key: n.key, label: n.label, unit: n.unit, kind: 'max', goal: tg[n.key], why: `🥗 You average ${round(avg, n.unit)} ${n.unit} ${n.label.toLowerCase()}/day (limit ${tg[n.key]}). Checks itself after 8 PM.` };
+    }
+    return null;
+  }
   function hash (s) { let h = 2166136261; for (const c of s) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return h >>> 0; }
   function questsFor (k) {
     if (G.quests[k] && G.quests[k].ids) return G.quests[k].ids;
@@ -126,13 +166,16 @@
       why[id] = i.icon + ' ' + i.title + (i.block ? ' (' + i.block.replace(/^\S+\s/, '').toLowerCase() + ')' : '');
     }
     // 2) fill with everyday quests: auto first, then a tap-to-finish one
-    const ok = (id) => !ids.includes(id) && !QUESTS[id].insight && (!QUESTS[id].needs || QUESTS[id].needs());
+    let nut = null;
+    if (k === todayKey() && latestNutrient) { nut = latestNutrient; ids.push('nutrient'); why.nutrient = nut.why; }
+    const ok = (id) => !ids.includes(id) && !QUESTS[id].insight && !QUESTS[id].special && (!QUESTS[id].needs || QUESTS[id].needs());
     const auto = Object.keys(QUESTS).filter((id) => !QUESTS[id].manual && ok(id));
     const manual = Object.keys(QUESTS).filter((id) => QUESTS[id].manual && ok(id));
-    const wantAuto = ids.length && QUESTS[ids[0]].manual ? 2 : 1;
+    const hasManual = ids.some((id) => QUESTS[id].manual);
+    const wantAuto = Math.max(0, 3 - ids.length - (hasManual ? 0 : 1)); // always one tap-to-finish quest
     ids.push(...pick(auto, Math.min(wantAuto, 3 - ids.length), seed));
     ids.push(...pick(manual, 3 - ids.length, seed ^ 0x9e3779b9));
-    G.quests[k] = { ids, why, done: (G.quests[k] && G.quests[k].done) || [] };
+    G.quests[k] = { ids, why, nut, done: (G.quests[k] && G.quests[k].done) || [] };
     save();
     return ids;
   }
@@ -201,6 +244,15 @@
       waters: dayTrs.filter((t) => t.eventType === 'Water').length, exercise: dayTrs.some((t) => t.eventType === 'Exercise'),
       logs: dayTrs.length, run3h: Math.floor(run3h), dinnerEarly: meals.some((t) => { const h = new Date(t.t).getHours(); return h >= 16 && h < 20; }),
     };
+    d.nut = {};
+    for (const t of dayTrs) if (t.nutrients) for (const key in t.nutrients) d.nut[key] = (d.nut[key] || 0) + (Number(t.nutrients[key]) || 0);
+    const seenEx = new Set();
+    for (const ex of [G.experiment].concat(G.pastExperiments || [])) {
+      if (!ex || seenEx.has(ex.id + '|' + ex.start)) continue; // the current one is also in the past list once finished
+      seenEx.add(ex.id + '|' + ex.start);
+      if (ex.days && ex.days[k]) add('Experiment day: ' + ex.title, 40, '🧪');
+      if (ex.bonusDay === k) add('Experiment finished!', 150, '🏆');
+    }
     const ids = questsFor(k);
     const states = ids.map((id) => questState(id, k, d));
     const nDone = states.filter((s) => s.done).length;
@@ -214,6 +266,8 @@
   // ---------- full game state ----------
   async function compute () {
     const trs = await allTreatments();
+    if (!G.quests[todayKey()]) { try { latestNutrient = pickNutrient(trs); } catch (e) { latestNutrient = null; } }
+    finishExperimentIfDue();
     if (!G.quests[todayKey()] && window.CGMHubInsights && C.entries.length) {
       try {
         const res = await Promise.race([window.CGMHubInsights.latest(), new Promise((r) => setTimeout(() => r(null), 4000))]);
@@ -246,6 +300,7 @@
       best = Math.max(best, streak);
     }
     G.bestStreak = Math.max(G.bestStreak || 0, best);
+    { const tq = res[today] && res[today].quests && res[today].quests.find((q) => q.id === 'nutrient'); if (tq && tq.done) { G.nutDone = G.nutDone || {}; G.nutDone[today] = true; } }
     save();
     return { total, days: res, today: res[today], streak, freezes, level: levelFor(total) };
   }
@@ -265,6 +320,8 @@
     ['l5', '⭐', 'Level 5', 'Reach level 5', (s) => s.level >= 5],
     ['l10', '💫', 'Level 10', 'Reach level 10', (s) => s.level >= 10],
     ['l20', '🌠', 'Level 20', 'Reach level 20', (s) => s.level >= 20],
+    ['scientist', '🧪', 'Scientist', 'Finish a 7-day experiment (5+ days)', () => (G.pastExperiments || []).some((e) => e.success)],
+    ['nutrition', '🥗', 'Well fed', 'Finish 5 nutrient quests', () => Object.keys(G.nutDone || {}).length >= 5],
   ];
 
   // ---------- celebrations ----------
@@ -325,7 +382,8 @@
     info.appendChild(el('div', 'pet-name', (G.pet ? G.pet.name : 'Your egg') + ' · Lv ' + L));
     const bar = el('div', 'bar xp'); const fill = el('span'); fill.style.width = Math.min(100, (cur / need) * 100) + '%'; bar.appendChild(fill); info.appendChild(bar);
     const done = s.today ? s.today.nDone : 0;
-    info.appendChild(el('div', 'muted small', `${cur}/${need} XP · 🔥 ${s.streak}${s.freezes ? ' · ❄️' + s.freezes : ''} · ⚔️ ${done}/3 quests`));
+    const ex = G.experiment && !G.experiment.finished ? ` · 🧪 ${Math.min(expDayIndex(G.experiment), EXP_DAYS)}/${EXP_DAYS}` : '';
+    info.appendChild(el('div', 'muted small', `${cur}/${need} XP · 🔥 ${s.streak}${s.freezes ? ' · ❄️' + s.freezes : ''} · ⚔️ ${done}/3 quests${ex}`));
     card.appendChild(info);
 
     // celebrations for new XP since last look
@@ -372,6 +430,7 @@
       const t = el('div', 'tile'); t.appendChild(el('div', 't-label', ic + ' ' + l)); t.appendChild(el('div', 't-value', String(v))); st.appendChild(t);
     });
 
+    renderExperiment();
     // quests
     const ql = $('quest-list'); ql.textContent = '';
     for (const q of s.today.quests) {
@@ -379,12 +438,14 @@
       const row = el('div', 'quest' + (q.done ? ' done' : ''));
       row.appendChild(el('span', 'q-ic', q.done ? '✅' : def.icon));
       const mid = el('div', 'grow');
-      mid.appendChild(el('div', 'q-text', def.text));
+      const qp = (G.quests[todayKey()] || {}).nut;
+      mid.appendChild(el('div', 'q-text', typeof def.text === 'function' ? def.text(qp) : def.text));
       const why = ((G.quests[todayKey()] || {}).why || {})[q.id];
-      if (why) mid.appendChild(el('div', 'q-why', '💡 From your insights: ' + why));
+      if (why) mid.appendChild(el('div', 'q-why', q.id === 'nutrient' ? why : '💡 From your insights: ' + why));
       if (!def.manual) {
         const b = el('div', 'bar q'); const f = el('span'); f.style.width = (q.prog / q.goal) * 100 + '%'; b.appendChild(f); mid.appendChild(b);
-        mid.appendChild(el('div', 'muted small', q.done ? 'Done! +30 XP' : `${q.prog}${def.unit || ''} / ${q.goal}${def.unit || ''} · checks itself`));
+        const un = q.id === 'nutrient' && qp ? ' ' + qp.unit : (def.unit || '');
+        mid.appendChild(el('div', 'muted small', q.done ? 'Done! +30 XP' : q.id === 'nutrient' && qp && qp.kind === 'max' ? 'checks itself after 8 PM' : `${q.prog}${un} / ${q.goal}${un} · checks itself`));
       } else mid.appendChild(el('div', 'muted small', q.done ? 'Done! +30 XP' : 'Tap “Done” when you’ve done it'));
       row.appendChild(mid);
       if (def.manual && !q.done) {
@@ -487,5 +548,94 @@
     if (v === 'game') { if (!G.pet) { $('pet-pick').hidden = false; renderPetPicker(); } soon(); }
   });
 
-  window.CGMHubGame = { levelFor, xpForLevel, scoreDay, get state () { return lastState; } };
+  // =====================================================================
+  // 🧪 7-day experiments (started from a pattern card)
+  // =====================================================================
+  const EXP_DAYS = 7, EXP_NEED = 5;
+  function expDayIndex (ex) { return Math.floor((keyToTime(todayKey()) - keyToTime(ex.start)) / DAY) + 1; }
+  function startExperiment (ins) {
+    if (G.experiment && !G.experiment.finished && G.experiment.id !== ins.id && !confirm('Stop your current experiment (' + G.experiment.title + ') and start this one?')) return false;
+    if (G.experiment && G.experiment.id === ins.id && !G.experiment.finished) { C.go('game'); return true; }
+    if (G.experiment && Object.keys(G.experiment.days || {}).length) G.pastExperiments = (G.pastExperiments || []).concat([Object.assign({}, G.experiment, { finished: true })]);
+    G.experiment = { id: ins.id, title: ins.title, icon: ins.icon, text: ins.experiment, start: todayKey(), days: {}, finished: false };
+    save();
+    toast('🧪 Experiment started! Check in each day.');
+    C.go('game');
+    render();
+    return true;
+  }
+  function finishExperimentIfDue () {
+    const ex = G.experiment;
+    if (!ex || ex.finished || expDayIndex(ex) <= EXP_DAYS) return;
+    const n = Object.keys(ex.days).length;
+    ex.finished = true;
+    ex.success = n >= EXP_NEED;
+    if (ex.success) ex.bonusDay = todayKey();
+    G.pastExperiments = (G.pastExperiments || []).concat([ex]);
+    save();
+    measureResult(ex);
+  }
+  // before (14 days before the start) vs during (the 7 experiment days), using the same pattern detector
+  async function measureResult (ex) {
+    const I = window.CGMHubInsights;
+    if (!I) return;
+    try {
+      const s0 = keyToTime(ex.start);
+      const count = async (a, b) => {
+        const d = await I.loadData(a, b);
+        const res = I.analyze(d.series, d.trs);
+        const ins = res.insights.find((x) => x.id === ex.id);
+        const elig = ins && ins.dots ? ins.dots.filter((x) => x.hit !== null).length : res.days;
+        const hits = ins ? (ins.hits ?? 1) : 0;
+        return { hits, elig: Math.max(elig, 1) };
+      };
+      const before = await count(s0 - 14 * DAY, s0), during = await count(s0, s0 + EXP_DAYS * DAY);
+      const rb = before.hits / before.elig, rd = during.hits / during.elig;
+      ex.result = { before, during, better: rd < rb - 0.05, worse: rd > rb + 0.05 };
+      save();
+      render();
+    } catch (e) { /* result is optional */ }
+  }
+  function renderExperiment () {
+    const card = $('exp-card');
+    if (!card) return;
+    const ex = G.experiment;
+    card.hidden = !ex;
+    if (!ex) return;
+    card.textContent = '';
+    const head = el('div', 'card-head');
+    head.appendChild(el('h2', null, '🧪 Your experiment'));
+    card.appendChild(head);
+    card.appendChild(el('div', 'b', ex.icon + ' ' + ex.title));
+    card.appendChild(el('p', null, ex.text));
+    const dots = el('div', 'exp-dots');
+    const idx = expDayIndex(ex);
+    for (let i = 1; i <= EXP_DAYS; i++) {
+      const k = dayKey(keyToTime(ex.start) + (i - 1) * DAY + 2 * HOUR);
+      const d = el('span', 'exp-dot' + (ex.days[k] ? ' on' : '') + (i === idx && !ex.finished ? ' now' : '') + (i < idx && !ex.days[k] ? ' miss' : ''), ex.days[k] ? '✓' : String(i));
+      d.title = 'Day ' + i;
+      dots.appendChild(d);
+    }
+    card.appendChild(dots);
+    const n = Object.keys(ex.days).length;
+    if (!ex.finished) {
+      card.appendChild(el('div', 'muted small', `Day ${Math.min(idx, EXP_DAYS)} of ${EXP_DAYS} · ${n} done · do it on ${EXP_NEED} days for +150 XP (missing a day or two is fine)`));
+      if (!ex.days[todayKey()]) {
+        const b = el('button', 'btn primary', 'I did it today ✓ (+40 XP)'); b.type = 'button';
+        b.addEventListener('click', () => { ex.days[todayKey()] = true; save(); confetti(); render(); });
+        card.appendChild(b);
+      } else card.appendChild(el('p', 'small', '✅ Done for today. See you tomorrow!'));
+    } else {
+      card.appendChild(el('p', 'b', ex.success ? `🏆 Finished! You did it on ${n} of ${EXP_DAYS} days.` : `Finished: ${n} of ${EXP_DAYS} days. Want to try again?`));
+      if (ex.result) {
+        const r = ex.result;
+        card.appendChild(el('p', null, `Before: ${r.before.hits} of ${r.before.elig} · During: ${r.during.hits} of ${r.during.elig}. ` + (r.better ? 'It happened less often. 🎉 Worth keeping up, and worth telling your care team.' : r.worse ? 'It happened more often this week. That’s useful to know too. Try a different experiment, or talk it over with your care team.' : 'About the same so far. One week is short; patterns can take longer to shift.')));
+      } else card.appendChild(el('p', 'muted small', 'Working out before vs after…'));
+      const again = el('button', 'btn', 'Clear and pick a new one in Trends'); again.type = 'button';
+      again.addEventListener('click', () => { G.experiment = null; save(); C.go('trends'); });
+      card.appendChild(again);
+    }
+  }
+
+  window.CGMHubGame = { levelFor, xpForLevel, scoreDay, startExperiment, get experiment () { return G.experiment; }, get state () { return lastState; } };
 })();

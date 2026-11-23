@@ -525,3 +525,12 @@ svg.hist-chart { width: 100%; height: 220px; display: block; margin-top: 10px; }
 .nut-tip p { margin: 8px 0; }
 .block { display: block; }
 .nut-field span { font-size: .8rem; }
+
+/* ---------- experiments ---------- */
+.exp-card { border: 2px solid color-mix(in srgb, var(--ins) 50%, var(--line)); }
+.exp-dots { display: flex; gap: 6px; margin: 10px 0 6px; }
+.exp-dot { flex: 1; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--card-2); color: var(--text-2); font-weight: 700; font-size: .85rem; }
+.exp-dot.on { background: var(--in); color: #fff; }
+.exp-dot.now { outline: 2px solid var(--ins); }
+.exp-dot.miss { opacity: .45; }
+.exp-btn { margin-top: 10px; width: 100%; padding: 12px; }
