@@ -141,7 +141,7 @@
       if (t.insulin) r.appendChild(el('div', null, Math.round(t.insulin * 10) / 10 + 'u'));
       if (t.carbs) r.appendChild(el('div', null, Math.round(t.carbs) + 'g'));
       li.appendChild(r);
-      ul.appendChild(li);
+      ul.appendChild(C.tappable(li, t));
     }
   }
 
