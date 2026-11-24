@@ -24,7 +24,7 @@
     if (name === 'food' && window.CGMHubUsual) window.CGMHubUsual.render();
     if ((name === 'food' || name === 'rapid') && window.CGMHubDose) window.CGMHubDose.reset(name);
     if (name === 'food' && window.CGMHubDose) window.CGMHubDose.renderImported();
-    if (name === 'food' && window.CGMHubFeatures.renderGroups) window.CGMHubFeatures.renderGroups();
+    if (name === 'food' && window.CGMHubFeatures.setMealGroup) window.CGMHubFeatures.setMealGroup(null);
     if (name === 'rapid') { $('rapid-name').value = C.S.rapidName || ''; $('rapid-time').value = nowInput(); }
     if (name === 'bg') { $('bg-time').value = nowInput(); document.querySelectorAll('.unit-label').forEach((e) => { e.textContent = C.unitLabel(); }); }
     if (name === 'note') $('note-time').value = nowInput();
