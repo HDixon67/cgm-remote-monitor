@@ -1056,7 +1056,7 @@
   // internal API for features.js
   window.CGMHubCore = {
     get S () { return S; }, get entries () { return entries; }, get treatments () { return treatments; }, get periods () { return periods; },
-    hooks, onBoard: (t) => onBoard(t), calcFor, apiGet, apiUrl, apiPostTreatment, apiPutTreatment, apiDeleteTreatment, tappable, refresh, saveSettings, go, showMsg, normEntries, normTreatments, isBasal, stats,
+    hooks, onBoard: (t) => onBoard(t), calcFor, ARROWS, apiGet, apiUrl, apiPostTreatment, apiPutTreatment, apiDeleteTreatment, tappable, refresh, saveSettings, go, showMsg, normEntries, normTreatments, isBasal, stats,
     $, el, sv, fmtBG, toMg, fromMg, mmol, unitLabel, clockTime, durText, toLocalInput, statusOf, treatmentLabel, iconFor,
     MIN, HOUR, DAY, MGDL_PER_MMOL,
   };

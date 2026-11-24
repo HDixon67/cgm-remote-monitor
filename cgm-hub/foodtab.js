@@ -143,6 +143,17 @@
         const eh = el('div', 'ft-entry-head');
         eh.appendChild(el('span', 'muted small', (t.raw && t.raw.timeUnknown ? 'No time' : C.clockTime(t.t)) + (t.insulin ? ' · 💉 ' + r1(t.insulin) + ' u' : '') + (/cronometer/i.test(t.enteredBy) ? ' · from Cronometer' : '')));
         if (mg && mg.gl) { const c = el('span', 'gi-chip gi-' + mg.glBand, 'Meal GL ' + mg.gl); c.title = 'Glycemic load of this meal (' + mg.glBand + ')'; eh.appendChild(c); }
+        // glucose when you ate: the CGM reading closest to the meal (within 10 min), or the one the calculator used
+        if (!(t.raw && t.raw.timeUnknown)) {
+          const near = C.entries.reduce((b, e) => (Math.abs(e.t - t.t) <= 10 * MIN && (!b || Math.abs(e.t - t.t) < Math.abs(b.t - t.t)) ? e : b), null);
+          const mg = near ? near.mg : t.raw && t.raw.calcGlucose != null ? C.toMg(Number(t.raw.calcGlucose)) : null;
+          if (mg != null) {
+            const st = C.statusOf(mg);
+            const bg = el('span', 'bg-at bg-' + st, '🩸 ' + C.fmtBG(mg) + (near && C.ARROWS && C.ARROWS[near.dir] ? ' ' + C.ARROWS[near.dir] : ''));
+            bg.title = 'Your glucose when you ate (' + C.unitLabel() + ')';
+            eh.appendChild(bg);
+          }
+        }
         const o = !(t.raw && t.raw.timeUnknown) && window.CGMHubUsual && window.CGMHubUsual.outcome(t);
         if (o) { const rise = Math.max(0, o.peak - o.start); const s = el('span', 'spike spike-' + o.verdict, o.verdict === 'low' ? '📉 dipped low after' : rise < 18 ? '✅ your spike: steady' : '📈 your spike +' + C.fmtBG(rise)); s.title = 'What your CGM did in the 3 hours after: started ' + C.fmtBG(o.start) + ', peaked ' + C.fmtBG(o.peak) + ', 3 h later ' + C.fmtBG(o.end); eh.appendChild(s); }
         const ed = el('button', 'ft-edit', '✏️'); ed.type = 'button'; ed.setAttribute('aria-label', 'Edit or delete this entry');
