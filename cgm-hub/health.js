@@ -293,6 +293,8 @@
   C.hooks.view.push((v) => { if (v === 'settings') renderSettings(); });
   C.hooks.render.push(() => refreshCache(false));
   if (native) {
+    // right after you log something, sync again so a meal logged in both apps is cleaned up straight away
+    C.hooks.logSaved.push(() => setTimeout(() => sync(false), 2500));
     setTimeout(() => sync(false), 3000);
     setInterval(() => { if (!document.hidden) sync(false); }, 30 * MIN);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) sync(false); });
