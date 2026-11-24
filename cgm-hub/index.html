@@ -15,6 +15,7 @@
 
     <!-- ============ HOME ============ -->
     <section class="view" id="view-home" data-view="home">
+      <div class="top-actions"><button class="icon-btn" data-goto="settings" type="button" aria-label="Settings">⚙️</button></div>
       <header class="hero card">
         <div class="hero-top">
           <div>
@@ -383,7 +384,7 @@
 
     <section class="view" id="view-game" data-view="game" hidden>
       <div class="card game-pet">
-        <div class="card-head"><button class="link" data-goto="home" type="button">‹ Home</button><button class="link" id="pet-edit" type="button">✏️ Pet</button></div>
+        <div class="card-head"><h2>🐾 Your buddy</h2><button class="link" id="pet-edit" type="button">✏️ Change</button></div>
         <div id="game-pet"></div>
         <div id="pet-pick" hidden>
           <h2>Choose your buddy</h2>
@@ -696,7 +697,7 @@
         <h2>🎮 Game</h2>
         <label class="check"><input type="checkbox" id="game-toggle"> Show my pet, XP and quests</label>
         <label class="check"><input type="checkbox" id="set-brief" checked> Show the ☀️ morning brief once each morning</label>
-        <label class="check"><input type="checkbox" id="set-side-home" checked> Show ✨ side quests on Home</label>
+        <label class="check"><input type="checkbox" id="set-side-home"> Also show ✨ side quests on Home</label>
       </div>
       <p class="foot muted small">CGM Hub is a personal tool, not a medical device. Always double-check doses. Keep your Libre app alarms on.</p>
     </section>
@@ -707,7 +708,7 @@
     <button data-goto="food"><span aria-hidden="true">🥗</span>Food</button>
     <button data-goto="log" class="add"><span aria-hidden="true">＋</span>Log</button>
     <button data-goto="trends"><span aria-hidden="true">📈</span>Trends</button>
-    <button data-goto="settings"><span aria-hidden="true">⚙️</span>Settings</button>
+    <button data-goto="game"><span aria-hidden="true">🐾</span>Pet</button>
   </nav>
 
   <div class="modal" id="scanner" hidden role="dialog" aria-modal="true" aria-label="Scan a barcode">
@@ -749,6 +750,7 @@
   <script src="insights.js"></script>
   <script src="importer.js"></script>
   <script src="tiles.js"></script>
+  <script src="petart.js"></script>
   <script src="game.js"></script>
   <script src="reminders.js"></script>
   <script src="loghub.js"></script>
