@@ -26,3 +26,6 @@ Health data is read on the phone and saved to your own Nightscout as one `Health
 Long-press the home screen → Widgets → CGM Hub. It shows glucose, arrow, change, time, insulin on board and the top side quest or next med, coloured low / in range / high (grey when the reading is over 15 minutes old).
 - While the app is open, the web app sends updates through the `Widget` plugin (`WidgetPlugin.kt`).
 - In the background, `WidgetWorker` fetches the latest reading from Nightscout every ~15 minutes (Android's minimum) using the address and token the app handed over (kept in the app's private storage).
+
+## Food from Cronometer
+Cronometer can share food to Health Connect (Cronometer → Settings → Health Connect → nutrition). The `HealthConnect` plugin reads Nutrition records, and `health.js` groups foods eaten together (same meal, within 45 min) into one CGM Hub meal ("Carb Correction", entered by "Cronometer (Health Connect)"). Meals already logged in CGM Hub within 45 minutes are skipped. The Food sheet lists today's imported meals with a 💉 Dose for it button; the Rapid sheet then doses for that meal's carbs.

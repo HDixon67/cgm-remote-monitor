@@ -88,6 +88,77 @@
     return Promise.resolve(out);
   }
 
+  // ---------- food from Cronometer (or any food app) via Health Connect ----------
+  // Health Connect has one entry per food. Foods eaten together (same meal, within 45 min) become one CGM Hub meal,
+  // saved as "Carb Correction" (carbs, no insulin) at the time of the first food. Same time + type each sync,
+  // so Nightscout updates it instead of duplicating. Meals already logged in CGM Hub are skipped.
+  const FOOD_KEY = 'cgmhub.foodImport.v1';
+  const IMPORTER = 'Cronometer (Health Connect)';
+  const MEAL_NAMES = { 1: 'Breakfast', 2: 'Lunch', 3: 'Dinner', 4: 'Snack' };
+  const SOURCES = { 'com.cronometer.android': 'Cronometer', 'com.cronometer.android.gold': 'Cronometer' };
+  const sourceName = (pkg) => SOURCES[pkg] || (/cronometer/i.test(pkg || '') ? 'Cronometer' : 'your food app');
+  const toUnit = (key, grams) => { const N = window.CGMHubNutrition; const u = N && N.BY[key] ? N.BY[key].unit : 'g'; return key === 'kcal' ? grams : u === 'mg' ? grams * 1000 : u === 'µg' ? grams * 1e6 : grams; };
+  const r2 = (v) => Math.round(v * 100) / 100;
+  function groupFood (items) {
+    const groups = [];
+    for (const x of items.slice().sort((a, b) => a.start - b.start)) {
+      const g = groups[groups.length - 1];
+      if (g && dayKey(g.start) === dayKey(x.start) && (g.meal || 0) === (x.meal || 0) && x.start - g.start <= 45 * MIN) g.items.push(x);
+      else groups.push({ start: x.start, meal: x.meal || 0, source: x.source, items: [x] });
+    }
+    return groups;
+  }
+  function mealOf (g) {
+    const N = window.CGMHubNutrition;
+    const n = {};
+    for (const x of g.items) for (const k in (x.n || {})) n[k] = (n[k] || 0) + toUnit(k, Number(x.n[k]) || 0);
+    const total = n.carbs || 0, fiber = n.fiber || 0;
+    const net = !N || N.carbMode() === 'net';
+    const carbs = Math.max(0, net ? total - fiber : total);
+    const names = g.items.map((x) => x.name).filter(Boolean);
+    const h = new Date(g.start).getHours();
+    const t = {
+      eventType: 'Carb Correction', created_at: new Date(g.start).toISOString(), enteredBy: IMPORTER,
+      carbs: Math.round(carbs * 10) / 10, totalCarbs: r2(total), carbMode: net ? 'net' : 'total',
+      mealGroup: MEAL_NAMES[g.meal] || (h >= 4 && h < 10.5 ? 'Breakfast' : h >= 11 && h < 15 ? 'Lunch' : h >= 17 && h < 21.5 ? 'Dinner' : 'Snack'),
+      notes: (names.join(' + ') || sourceName(g.source) + ' meal').slice(0, 140),
+      foods: g.items.map((x) => ({ name: x.name || 'Food', carbs: r2(toUnit('carbs', (x.n || {}).carbs || 0)), kcal: Math.round((x.n || {}).kcal || 0) })),
+      source: g.source || '', nutrients: {},
+    };
+    for (const k in n) t.nutrients[k] = r2(n[k]);
+    if (n.kcal) t.calories = Math.round(n.kcal);
+    if (n.protein) t.protein = r2(n.protein);
+    if (n.fat) t.fat = r2(n.fat);
+    if (fiber) t.fiber = r2(fiber);
+    return t;
+  }
+  async function importFood (raw, from) {
+    if (C.S.foodImport === false) return 0;
+    const items = (raw.nutrition || []).filter((x) => x.start >= from && x.n && (x.n.carbs != null || x.n.kcal != null));
+    if (!items.length) return 0;
+    const meals = groupFood(items).map(mealOf).filter((t) => t.carbs >= 0.5 || t.calories >= 20);
+    if (!meals.length) return 0;
+    // meals you logged in CGM Hub (or elsewhere) around the same time: don't count the carbs twice
+    let mine = [];
+    try {
+      mine = C.normTreatments(await C.apiGet('/api/v1/treatments.json', { 'find[carbs][$gt]': '0', 'find[created_at][$gte]': new Date(from - HOUR).toISOString(), count: '500' }))
+        .filter((t) => t.enteredBy !== IMPORTER);
+    } catch (e) { return 0; }
+    let seen = {}; try { seen = JSON.parse(localStorage.getItem(FOOD_KEY)) || {}; } catch (e) { /* ignore */ }
+    let n = 0;
+    for (const t of meals) {
+      const at = Date.parse(t.created_at);
+      if (mine.some((m) => Math.abs(m.t - at) <= 45 * MIN)) continue;
+      const sig = t.carbs + '|' + (t.calories || 0) + '|' + t.foods.length;
+      if (seen[t.created_at] === sig) continue; // already saved, nothing changed
+      await C.apiPostTreatment(t);
+      seen[t.created_at] = sig; n++;
+    }
+    for (const k of Object.keys(seen)) if (Date.parse(k) < Date.now() - 20 * DAY) delete seen[k];
+    try { localStorage.setItem(FOOD_KEY, JSON.stringify(seen)); } catch (e) { /* ignore */ }
+    return n;
+  }
+
   // ---------- syncing (Android app only) ----------
   let syncing = false;
   async function sync (manual) {
@@ -107,8 +178,11 @@
         cache.set(dayKey(d0), norm(s));
         n++;
       }
-      localStorage.setItem(SYNC_KEY, JSON.stringify({ lastDay: today0, at: Date.now() }));
-      if (manual) C.showMsg('hc-msg', `✅ Synced ${n} day${n === 1 ? '' : 's'} from Health Connect.`, 'ok');
+      let meals = 0;
+      try { meals = await importFood(raw, from); } catch (e) { /* food import is a bonus; health data still synced */ }
+      localStorage.setItem(SYNC_KEY, JSON.stringify({ lastDay: today0, at: Date.now(), meals: (st.meals || 0) + meals }));
+      if (meals) C.refresh(false);
+      if (manual) C.showMsg('hc-msg', `✅ Synced ${n} day${n === 1 ? '' : 's'} from Health Connect` + (meals ? ` and ${meals} meal${meals === 1 ? '' : 's'} from Cronometer.` : '.'), 'ok');
       renderSettings();
       C.hooks.render.forEach((fn) => { try { fn(); } catch (e) { /* ignore */ } });
     } catch (e) {
@@ -138,7 +212,12 @@
     try { granted = await HC.grantedPermissions(); } catch (e) { /* ignore */ }
     const st = JSON.parse(localStorage.getItem(SYNC_KEY) || '{}');
     box.appendChild(el('p', null, granted.all ? '✅ Connected.' + (st.at ? ' Last sync ' + C.clockTime(st.at) + '.' : '') : (granted.granted && granted.granted.length ? 'Connected, but some data types are off.' : 'Not connected yet.')));
-    box.appendChild(el('p', 'muted small', 'In Samsung Health: Settings → Health Connect → allow it to share steps, heart rate, sleep and exercise. Then connect CGM Hub here.'));
+    box.appendChild(el('p', 'muted small', 'In Samsung Health: Settings → Health Connect → allow it to share steps, heart rate, sleep and exercise. In Cronometer: Settings → Health Connect → turn on sharing nutrition. Then connect CGM Hub here and allow everything (including Nutrition).'));
+    const fl = el('label', 'check');
+    const fc = el('input'); fc.type = 'checkbox'; fc.checked = C.S.foodImport !== false;
+    fc.addEventListener('change', () => { C.S.foodImport = fc.checked; C.saveSettings(); });
+    fl.append(fc, document.createTextNode(' 📥 Bring in meals from Cronometer (skips meals you already logged in CGM Hub)'));
+    box.appendChild(fl);
     const b1 = el('button', 'btn primary', granted.all ? 'Change permissions' : '❤️ Connect Health Connect'); b1.type = 'button';
     b1.addEventListener('click', async () => {
       try { const r = granted.all ? await HC.openSettings() : await HC.requestHealthPermissions(); if (r && r.granted && r.granted.length) await sync(true); } catch (e) { C.showMsg('hc-msg', e.message || String(e), 'danger'); }
@@ -160,5 +239,5 @@
     document.addEventListener('visibilitychange', () => { if (!document.hidden) sync(false); });
   }
 
-  window.CGMHubHealth = { native, load, cachedDay, cachedRange, refreshCache, sync, summarize };
+  window.CGMHubHealth = { native, load, cachedDay, cachedRange, refreshCache, sync, summarize, groupFood, mealOf, importFood, IMPORTER };
 })();
