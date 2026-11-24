@@ -174,11 +174,17 @@
     for (const m of list.slice(0, 4)) {
       const row = el('div', 'imp-row');
       const mid = el('div', 'grow');
-      mid.appendChild(el('div', 'title', ((m.raw && m.raw.mealGroup) || 'Meal') + ' · ' + C.clockTime(m.t)));
+      const noTime = !!(m.raw && m.raw.timeUnknown);
+      mid.appendChild(el('div', 'title', noTime ? 'No time saved' : ((m.raw && m.raw.mealGroup) || 'Meal') + ' · ' + C.clockTime(m.t)));
       mid.appendChild(el('div', 'muted small', Math.round(m.carbs) + ' g carbs · ' + (m.notes || '').slice(0, 60)));
       row.appendChild(mid);
       const dosed = C.treatments.some((t) => isBolus(t) && t.t >= m.t - 20 * 60e3 && t.t <= m.t + 3 * 3600e3);
-      if (dosed) row.appendChild(el('span', 'muted small', '✓ insulin logged'));
+      if (noTime) {
+        // Cronometer didn't save a time: "eating it now" moves it to now and doses for its carbs (no retyping)
+        const b = el('button', 'btn slim primary', '🍽️ Eating it now · 💉 Dose'); b.type = 'button';
+        b.addEventListener('click', () => claim(m, b));
+        row.appendChild(b);
+      } else if (dosed) row.appendChild(el('span', 'muted small', '✓ insulin logged'));
       else if (Date.now() - m.t < 2 * 3600e3) {
         const b = el('button', 'btn slim primary', '💉 Dose for it'); b.type = 'button';
         b.addEventListener('click', () => { if (window.CGMHubLogHub) window.CGMHubLogHub.openSheet('rapid'); });
@@ -187,6 +193,23 @@
       box.appendChild(row);
     }
     box.appendChild(el('p', 'muted small', 'Already counted. No need to log these again here, just add the insulin.'));
+  }
+  async function claim (m, btn) {
+    btn.disabled = true;
+    const h = new Date().getHours() + new Date().getMinutes() / 60;
+    const t = Object.assign({}, m.raw, {
+      created_at: new Date().toISOString(), mealGroup: h >= 4 && h < 10.5 ? 'Breakfast' : h >= 11 && h < 15 ? 'Lunch' : h >= 17 && h < 21.5 ? 'Dinner' : 'Snack',
+      enteredBy: 'CGM Hub (from Cronometer)', // now yours: the next Cronometer sync sees it and won't add it again
+    });
+    delete t.timeUnknown; delete t.mills; delete t.date;
+    try {
+      await C.apiPutTreatment(t);
+      await C.refresh(false);
+      if (window.CGMHubLogHub) window.CGMHubLogHub.openSheet('rapid');
+    } catch (e) {
+      C.showMsg('log-msg', e.message || String(e), 'danger');
+      btn.disabled = false;
+    }
   }
   C.hooks.render.push(() => { if ($('food-imported') && !$('food-imported').closest('[data-logpanel]').hidden) renderImported(); });
 
