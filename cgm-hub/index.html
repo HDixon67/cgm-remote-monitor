@@ -150,6 +150,7 @@
         <button class="hub-tile wide t-mood" data-sheet="mood" type="button"><span class="hub-ic">🙂</span><span class="hub-txt"><b>How do you feel?</b><small id="st-mood">Quick check-in</small></span><span class="hub-add">Add ›</span></button>
         <button class="hub-tile t-bg" data-sheet="bg" type="button"><span class="hub-ic">👆</span><span class="hub-txt"><b>Blood check</b><small>Fingerstick</small></span></button>
         <button class="hub-tile t-note" data-sheet="note" type="button"><span class="hub-ic">📝</span><span class="hub-txt"><b>Note</b><small>Stress, sick, etc.</small></span></button>
+        <button class="hub-tile wide t-calc" data-goto="calc" type="button"><span class="hub-ic">🧮</span><span class="hub-txt"><b>Bolus calculator</b><small>The full calculator with all the maths</small></span><span class="hub-add">Open ›</span></button>
       </div>
 
       <div class="card">
@@ -359,6 +360,27 @@
     </section>
 
     <!-- ============ GAME ============ -->
+    <section class="view" id="view-food" data-view="food" hidden>
+      <div class="ft-nav">
+        <button class="nav-btn" id="ft-prev" type="button" aria-label="Previous day">‹</button>
+        <b id="ft-label">Today</b>
+        <button class="nav-btn" id="ft-next" type="button" aria-label="Next day">›</button>
+      </div>
+      <div class="notice danger" id="ft-msg" hidden></div>
+      <div class="card ft-hero">
+        <div class="ft-top" id="ft-top"></div>
+        <div class="ft-macros" id="ft-macros"></div>
+        <button class="link ft-goals" id="ft-goals" type="button">Edit goals</button>
+      </div>
+      <h3 class="ft-h">Meals logged</h3>
+      <div id="ft-meals"></div>
+      <div class="card ft-gi" id="ft-gi"></div>
+      <h3 class="ft-h">Activity</h3>
+      <div class="card" id="ft-activity"></div>
+      <h3 class="ft-h">Daily wins</h3>
+      <div id="ft-wins"></div>
+    </section>
+
     <section class="view" id="view-game" data-view="game" hidden>
       <div class="card game-pet">
         <div class="card-head"><button class="link" data-goto="home" type="button">‹ Home</button><button class="link" id="pet-edit" type="button">✏️ Pet</button></div>
@@ -600,7 +622,7 @@
         <p class="muted small">It updates live while CGM Hub is open, and about every 15 minutes in the background. Android doesn’t allow widgets to refresh more often than that. Tap it to open the app and get the latest.</p>
       </div>
       <div class="card">
-        <h2>🥗 Nutrition</h2>
+        <h2 id="nut-settings">🥗 Nutrition</h2>
         <label class="field"><span>Count carbs as</span>
           <select id="set-carbmode"><option value="net">Net carbs (carbs − fibre)</option><option value="total">Total carbs</option></select></label>
         <p class="muted small">This is what gets logged and used by the bolus calculator and forecast. Ask your care team which way they want you to count.</p>
@@ -670,7 +692,7 @@
 
   <nav class="tabbar" aria-label="Main">
     <button data-goto="home" class="on"><span aria-hidden="true">🏠</span>Home</button>
-    <button data-goto="calc"><span aria-hidden="true">🧮</span>Bolus</button>
+    <button data-goto="food"><span aria-hidden="true">🥗</span>Food</button>
     <button data-goto="log" class="add"><span aria-hidden="true">＋</span>Log</button>
     <button data-goto="trends"><span aria-hidden="true">📈</span>Trends</button>
     <button data-goto="settings"><span aria-hidden="true">⚙️</span>Settings</button>
@@ -708,6 +730,7 @@
 
   <script src="app.js"></script>
   <script src="nutrition.js"></script>
+  <script src="gi.js"></script>
   <script src="features.js"></script>
   <script src="dose.js"></script>
   <script src="health.js"></script>
@@ -723,5 +746,6 @@
   <script src="dideat.js"></script>
   <script src="usual.js"></script>
   <script src="widget.js"></script>
+  <script src="foodtab.js"></script>
 </body>
 </html>
