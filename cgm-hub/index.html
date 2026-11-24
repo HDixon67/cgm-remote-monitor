@@ -438,6 +438,7 @@
         <button data-mode="week" type="button">Week</button>
         <button data-mode="month" type="button">Month</button>
         <button data-mode="cycle" type="button">Cycle</button>
+        <button data-mode="basal" type="button">Basal</button>
       </div>
       <div class="hist-nav" id="hist-nav">
         <button class="nav-btn" id="hist-prev" type="button" aria-label="Previous">‹</button>
@@ -506,6 +507,17 @@
         <ul class="ob-list" id="hist-log"></ul>
       </div>
 
+      <div class="card mode-basal">
+        <div class="card-head"><h2>🌙 Basal check</h2></div>
+        <p class="muted small">Only nights with no food or rapid insulin for 4+ hours, so what you see is your long-acting insulin at work.</p>
+        <div class="bc-opts">
+          <div class="seg" id="basal-nights" role="group" aria-label="How many nights">
+            <button type="button" data-n="7">7 nights</button><button type="button" data-n="14">14</button><button type="button" data-n="30">30</button>
+          </div>
+          <label class="bc-win">Night <input type="time" id="basal-from" aria-label="Night starts"> to <input type="time" id="basal-to" aria-label="Night ends"></label>
+        </div>
+        <div id="basal-body"></div>
+      </div>
       <div class="card mode-cycle">
         <h2>Your cycle</h2>
         <div class="cycle-stats" id="cycle-stats"></div>
@@ -741,6 +753,7 @@
   <script src="reminders.js"></script>
   <script src="loghub.js"></script>
   <script src="history.js"></script>
+  <script src="basal.js"></script>
   <script src="brief.js"></script>
   <script src="edit.js"></script>
   <script src="dideat.js"></script>
