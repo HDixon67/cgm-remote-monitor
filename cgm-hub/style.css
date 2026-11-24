@@ -686,3 +686,27 @@ li.tap:focus-visible { outline: 2px solid var(--accent, #7aa2ff); outline-offset
 .toast.bad { border-color: var(--low); }
 .bg-at { font-size: .75rem; font-weight: 700; padding: 2px 7px; border-radius: 99px; background: color-mix(in srgb, var(--text) 10%, transparent); }
 .bg-at.bg-in { color: var(--in); } .bg-at.bg-high { color: var(--high); } .bg-at.bg-low { color: var(--low); }
+
+/* 🌙 basal check */
+#view-trends .mode-basal { display: none; }
+#view-trends.m-basal .mode-hist, #view-trends.m-basal .mode-cycle { display: none; }
+#view-trends.m-basal .mode-basal { display: block; }
+.bc-opts { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 8px 0 12px; }
+.bc-win { display: flex; align-items: center; gap: 6px; font-size: .9rem; color: var(--text-2); }
+.bc-win input { width: auto; padding: 6px 8px; font-size: .95rem; }
+.bc-sum { padding: 10px 0 12px; border-bottom: 1px solid var(--line); margin-bottom: 6px; }
+.bc-big { font-size: 1.2rem; font-weight: 700; }
+.bc-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.bc-chip { font-size: .8rem; font-weight: 700; padding: 3px 9px; border-radius: 99px; background: color-mix(in srgb, var(--text) 10%, transparent); white-space: nowrap; }
+.bc-chip.flat { color: var(--in); } .bc-chip.rising { color: var(--high); } .bc-chip.falling, .bc-chip.low { color: var(--low); }
+.bc-verdict { margin: 8px 0 0; }
+.bc-night { padding: 10px 0; border-top: 1px solid var(--line); }
+.bc-night.skip { opacity: .6; }
+.bc-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.bc-mid { display: flex; align-items: center; gap: 12px; margin: 6px 0 4px; }
+.bc-spark { width: 120px; height: 34px; flex-shrink: 0; }
+.bc-band { fill: color-mix(in srgb, var(--in) 14%, transparent); }
+.bc-line { fill: none; stroke-width: 2; stroke: var(--in); }
+.bc-line.rising { stroke: var(--high); } .bc-line.falling, .bc-line.low { stroke: var(--low); }
+.bc-how { margin-top: 12px; } .bc-how summary { cursor: pointer; color: var(--accent); font-weight: 600; }
+.bc-how ul { padding-left: 18px; display: grid; gap: 6px; font-size: .9rem; }

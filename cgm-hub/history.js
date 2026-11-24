@@ -151,12 +151,14 @@
     document.querySelectorAll('#hist-tabs [data-mode]').forEach((b) => b.classList.toggle('on', b.dataset.mode === mode));
     const v = $('view-trends');
     v.classList.toggle('m-cycle', mode === 'cycle');
+    v.classList.toggle('m-basal', mode === 'basal');
     v.classList.toggle('m-day', mode === 'day');
-    $('hist-nav').hidden = mode === 'cycle';
+    $('hist-nav').hidden = mode === 'cycle' || mode === 'basal';
   }
   async function render () {
     applyMode();
     if (mode === 'cycle') return;
+    if (mode === 'basal') { if (window.CGMHubBasal) window.CGMHubBasal.render(); return; }
     if (busy) { again = true; return; } // a tap while loading: run again when this one finishes
     busy = true; again = false; lastRun = Date.now();
     const [a, b] = range(mode, anchor);
