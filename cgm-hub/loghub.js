@@ -23,6 +23,7 @@
     if (name === 'food' && !$('log-time').value) $('log-time').value = nowInput();
     if (name === 'food' && window.CGMHubUsual) window.CGMHubUsual.render();
     if ((name === 'food' || name === 'rapid') && window.CGMHubDose) window.CGMHubDose.reset(name);
+    if (name === 'food' && window.CGMHubDose) window.CGMHubDose.renderImported();
     if (name === 'food' && window.CGMHubFeatures.renderGroups) window.CGMHubFeatures.renderGroups();
     if (name === 'rapid') { $('rapid-name').value = C.S.rapidName || ''; $('rapid-time').value = nowInput(); }
     if (name === 'bg') { $('bg-time').value = nowInput(); document.querySelectorAll('.unit-label').forEach((e) => { e.textContent = C.unitLabel(); }); }
@@ -65,7 +66,9 @@
     const when = $('rapid-time').value ? new Date($('rapid-time').value) : new Date();
     const dc = window.CGMHubDose ? window.CGMHubDose.check('rapid') : { fields: {} };
     if (dc.block) { C.showMsg('rapid-msg', dc.block, 'warn'); return; }
-    if (await post(Object.assign({ eventType: 'Correction Bolus', insulin: u, insulinType: name, notes: note || name + ' ' + u + 'u', created_at: when.toISOString() }, dc.fields), 'rapid-msg', name + ' ' + u + 'u logged.')) {
+    const t = Object.assign({ eventType: 'Correction Bolus', insulin: u, insulinType: name, notes: name + ' ' + u + 'u', created_at: when.toISOString() }, dc.fields);
+    if (note) t.notes = note;
+    if (await post(t, 'rapid-msg', name + ' ' + u + 'u logged.')) {
       $('rapid-units').value = ''; $('rapid-note').value = '';
       if (window.CGMHubDose) window.CGMHubDose.reset('rapid');
     }

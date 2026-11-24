@@ -8,6 +8,7 @@ import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.ActiveCaloriesBurnedRecord
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.HeartRateRecord
+import androidx.health.connect.client.records.NutritionRecord
 import androidx.health.connect.client.records.Record
 import androidx.health.connect.client.records.RestingHeartRateRecord
 import androidx.health.connect.client.records.SleepSessionRecord
@@ -15,6 +16,7 @@ import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.request.AggregateGroupByDurationRequest
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
+import androidx.health.connect.client.units.Mass
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
@@ -46,6 +48,7 @@ class HealthConnectPlugin : Plugin() {
         HealthPermission.getReadPermission(SleepSessionRecord::class),
         HealthPermission.getReadPermission(ExerciseSessionRecord::class),
         HealthPermission.getReadPermission(ActiveCaloriesBurnedRecord::class),
+        HealthPermission.getReadPermission(NutritionRecord::class),
     )
 
     private fun client(): HealthConnectClient = HealthConnectClient.getOrCreate(context)
@@ -161,6 +164,30 @@ class HealthConnectPlugin : Plugin() {
                     readAll(ActiveCaloriesBurnedRecord::class, start, end).forEach { r -> kcal += r.energy.inKilocalories }
                 }
                 res.put("activeKcal", kcal)
+
+                // food from Cronometer (or any food app): one entry per food, nutrients in grams, energy in kcal
+                val food = JSArray()
+                if (has(NutritionRecord::class)) {
+                    readAll(NutritionRecord::class, start, end).forEach { r ->
+                        val n = JSObject()
+                        fun g(k: String, v: Mass?) { if (v != null) n.put(k, v.inGrams) }
+                        r.energy?.let { n.put("kcal", it.inKilocalories) }
+                        g("carbs", r.totalCarbohydrate); g("fiber", r.dietaryFiber); g("sugars", r.sugar)
+                        g("protein", r.protein); g("fat", r.totalFat); g("satFat", r.saturatedFat); g("transFat", r.transFat)
+                        g("cholesterol", r.cholesterol); g("sodium", r.sodium); g("potassium", r.potassium)
+                        g("calcium", r.calcium); g("iron", r.iron); g("magnesium", r.magnesium); g("zinc", r.zinc)
+                        g("vitA", r.vitaminA); g("vitC", r.vitaminC); g("vitD", r.vitaminD); g("vitB12", r.vitaminB12); g("folate", r.folate)
+                        food.put(JSObject()
+                            .put("id", r.metadata.id)
+                            .put("start", r.startTime.toEpochMilli())
+                            .put("end", r.endTime.toEpochMilli())
+                            .put("name", r.name ?: "")
+                            .put("meal", r.mealType)
+                            .put("source", r.metadata.dataOrigin.packageName)
+                            .put("n", n))
+                    }
+                }
+                res.put("nutrition", food)
 
                 call.resolve(res)
             } catch (e: Exception) {
