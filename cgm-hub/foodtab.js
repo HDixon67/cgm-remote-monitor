@@ -113,19 +113,27 @@
     // meals
     const ml = $('ft-meals'); ml.textContent = '';
     let dayGl = 0;
-    for (const [name, icon, [lo, hi]] of MEALS) {
-      const logs = foodLogs.filter((t) => ((t.raw && t.raw.mealGroup) || autoGroup(t.t)) === name).sort((a, b) => a.t - b.t);
+    const loose = foodLogs.filter((t) => t.raw && t.raw.timeUnknown);
+    const timed = foodLogs.filter((t) => !(t.raw && t.raw.timeUnknown));
+    const groups = MEALS.map((m) => m.concat([timed.filter((t) => ((t.raw && t.raw.mealGroup) || autoGroup(t.t)) === m[0])]));
+    if (loose.length) groups.push(['From Cronometer (no time)', '📥', null, null, loose]);
+    for (const [name, icon, range, , list] of groups) {
+      const lo = range ? range[0] : 0, hi = range ? range[1] : 0;
+      const logs = list.slice().sort((a, b) => a.t - b.t);
       const mk = logs.reduce((s, t) => s + (kcalOf(t) || 0), 0);
       const card = el('div', 'ft-meal');
       const head = el('div', 'ft-meal-head');
       head.appendChild(el('span', 'ft-meal-ic', icon));
       const ht = el('div', 'grow');
       ht.appendChild(el('div', 'ft-meal-name', name));
+      if (!range) ht.appendChild(el('div', 'muted small', 'Cronometer didn’t save times for these. Turn on timestamps in Cronometer to sort them into meals.'));
       ht.appendChild(el('div', 'muted small', logs.length ? Math.round(mk) + ' kcal · ' + Math.round(logs.reduce((s, t) => s + t.carbs, 0)) + ' g carbs' : 'Recommended ' + Math.round(G.kcal * lo) + '–' + Math.round(G.kcal * hi) + ' kcal'));
       head.appendChild(ht);
-      const add = el('button', 'ft-add', '+'); add.type = 'button'; add.setAttribute('aria-label', 'Add to ' + name);
-      add.addEventListener('click', () => openFood(name));
-      head.appendChild(add);
+      if (range) {
+        const add = el('button', 'ft-add', '+'); add.type = 'button'; add.setAttribute('aria-label', 'Add to ' + name);
+        add.addEventListener('click', () => openFood(name));
+        head.appendChild(add);
+      }
       card.appendChild(head);
       for (const t of logs) {
         const foods = Array.isArray(t.raw && t.raw.foods) && t.raw.foods.length ? t.raw.foods : [{ name: t.notes || 'Food', carbs: t.carbs, kcal: kcalOf(t) }];
@@ -133,10 +141,13 @@
         if (mg) dayGl += mg.gl;
         const entry = el('div', 'ft-entry');
         const eh = el('div', 'ft-entry-head');
-        eh.appendChild(el('span', 'muted small', C.clockTime(t.t) + (t.insulin ? ' · 💉 ' + r1(t.insulin) + ' u' : '') + (/cronometer/i.test(t.enteredBy) ? ' · from Cronometer' : '')));
+        eh.appendChild(el('span', 'muted small', (t.raw && t.raw.timeUnknown ? 'No time' : C.clockTime(t.t)) + (t.insulin ? ' · 💉 ' + r1(t.insulin) + ' u' : '') + (/cronometer/i.test(t.enteredBy) ? ' · from Cronometer' : '')));
         if (mg && mg.gl) { const c = el('span', 'gi-chip gi-' + mg.glBand, 'Meal GL ' + mg.gl); c.title = 'Glycemic load of this meal (' + mg.glBand + ')'; eh.appendChild(c); }
-        const o = window.CGMHubUsual && window.CGMHubUsual.outcome(t);
+        const o = !(t.raw && t.raw.timeUnknown) && window.CGMHubUsual && window.CGMHubUsual.outcome(t);
         if (o) { const rise = Math.max(0, o.peak - o.start); const s = el('span', 'spike spike-' + o.verdict, o.verdict === 'low' ? '📉 dipped low after' : rise < 18 ? '✅ your spike: steady' : '📈 your spike +' + C.fmtBG(rise)); s.title = 'What your CGM did in the 3 hours after: started ' + C.fmtBG(o.start) + ', peaked ' + C.fmtBG(o.peak) + ', 3 h later ' + C.fmtBG(o.end); eh.appendChild(s); }
+        const ed = el('button', 'ft-edit', '✏️'); ed.type = 'button'; ed.setAttribute('aria-label', 'Edit or delete this entry');
+        ed.addEventListener('click', (e) => { e.stopPropagation(); if (window.CGMHubEdit) window.CGMHubEdit.open(t); });
+        eh.appendChild(ed);
         entry.appendChild(eh);
         for (const f of foods) {
           const row = el('div', 'ft-food');
@@ -201,7 +212,7 @@
       const filled = i < full;
       const b = el('button', 'ft-glass' + (filled ? ' on' : '') + (i === full ? ' next' : ''), filled ? '💧' : i === full ? '+' : ''); b.type = 'button';
       b.setAttribute('aria-label', filled ? 'Remove a glass of water' : 'Add a glass of water (250 ml)');
-      b.addEventListener('click', () => (filled && i === full - 1 ? removeLast(waterLogs) : !filled ? addWater() : null));
+      b.addEventListener('click', () => (filled && i === full - 1 ? removeLast(b, waterLogs) : !filled ? addWater(b) : toast('Tap the last glass to undo')));
       gl.appendChild(b);
     }
     w.appendChild(gl);
@@ -219,7 +230,7 @@
         const on = i < n;
         const b = el('button', 'ft-count' + (on ? ' on' : ''), ic); b.type = 'button';
         b.setAttribute('aria-label', on ? 'Remove a ' + label.toLowerCase() + ' serving' : 'Add a ' + label.toLowerCase() + ' serving');
-        b.addEventListener('click', () => (on && i === n - 1 ? removeWin(wins[k]) : !on ? addWin(k) : null));
+        b.addEventListener('click', () => (on && i === n - 1 ? removeWin(b, wins[k]) : !on ? addWin(b, k) : toast('Tap the last one to undo')));
         row.appendChild(b);
       }
       card.appendChild(row);
@@ -229,11 +240,33 @@
   }
   function cheer (title, text) { const d = el('div', 'ft-cheer'); d.appendChild(el('span', 'ft-cheer-ic', '🏆')); const t = el('div'); t.appendChild(el('b', null, title)); t.appendChild(el('div', 'muted small', text)); d.appendChild(t); return d; }
   const whenFor = () => (day === dayStart(Date.now()) ? new Date() : new Date(day + 12 * HOUR));
-  async function act (fn) { try { await fn(); await render(); C.hooks.logSaved.forEach((f) => { try { f(); } catch (e) { /* ignore */ } }); } catch (e) { $('ft-msg').hidden = false; $('ft-msg').textContent = e.message || String(e); } }
-  const addWater = () => act(() => C.apiPostTreatment({ eventType: 'Water', water: 250, notes: 'Water 250 ml', created_at: whenFor().toISOString(), enteredBy: 'CGM Hub' }));
-  const addWin = (k) => act(() => C.apiPostTreatment({ eventType: 'Daily Win', win: k, notes: WINS[k][2], created_at: whenFor().toISOString(), enteredBy: 'CGM Hub' }));
-  const removeLast = (logs) => act(() => C.apiDeleteTreatment(logs[logs.length - 1]._id));
-  const removeWin = (docs) => act(() => C.apiDeleteTreatment(docs.sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at))[docs.length - 1]._id));
+  function toast (text, bad) {
+    const box = $('toasts'); if (!box) return;
+    const t = el('div', 'toast' + (bad ? ' bad' : ''), text); box.appendChild(t);
+    setTimeout(() => t.classList.add('out'), bad ? 5000 : 1800); setTimeout(() => t.remove(), bad ? 5500 : 2300);
+  }
+  let saving = false;
+  async function act (btn, fn, ok) {
+    if (saving) return;
+    saving = true;
+    // show it straight away; the real numbers come back from Nightscout a moment later
+    if (btn) { btn.classList.toggle('on'); btn.classList.add('saving'); }
+    document.querySelectorAll('#ft-wins button').forEach((b) => { b.disabled = true; });
+    try {
+      await fn();
+      toast(ok);
+      C.hooks.logSaved.forEach((f) => { try { f(); } catch (e) { /* ignore */ } });
+    } catch (e) {
+      toast('Couldn’t save: ' + (e.message || e), true);
+    } finally {
+      saving = false;
+      await render();
+    }
+  }
+  const addWater = (b) => act(b, () => C.apiPostTreatment({ eventType: 'Water', water: 250, notes: 'Water 250 ml', created_at: whenFor().toISOString(), enteredBy: 'CGM Hub' }), '💧 +250 ml');
+  const addWin = (b, k) => act(b, () => C.apiPostTreatment({ eventType: 'Daily Win', win: k, notes: WINS[k][2], created_at: whenFor().toISOString(), enteredBy: 'CGM Hub' }), WINS[k][0] + ' +1 ' + WINS[k][1].toLowerCase());
+  const removeLast = (b, logs) => act(b, () => C.apiDeleteTreatment(logs[logs.length - 1]._id), '↩️ Removed');
+  const removeWin = (b, docs) => act(b, () => C.apiDeleteTreatment(docs.sort((a, c) => Date.parse(a.created_at) - Date.parse(c.created_at))[docs.length - 1]._id), '↩️ Removed');
 
   // ---------- + on a meal: the Food sheet, with that meal picked ----------
   function openFood (name) {
