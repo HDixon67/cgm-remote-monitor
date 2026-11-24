@@ -383,7 +383,7 @@
     const home = $('side-home');
     if (home) {
       home.textContent = '';
-      home.hidden = !sq.open.length || C.S.sideHome === false;
+      home.hidden = !sq.open.length || C.S.sideHome !== true;
       if (!home.hidden) {
         const head = el('div', 'card-head');
         head.appendChild(el('h2', null, '✨ Side quests'));
@@ -559,14 +559,19 @@
   }
 
   // ---------- rendering ----------
+  // the pet is drawn (petart.js) so unlockables sit on it; the emoji is only the fallback
+  function petSvg (level, mood, item, species) {
+    const A = window.CGMHubPetArt;
+    const sp = species || (G.pet ? G.pet.emoji : '🐱');
+    if (!A) { const d = el('div', 'pet-body ' + mood, level < 2 ? '🥚' : sp); return d; }
+    const d = el('div', 'pet-art');
+    d.innerHTML = A.svg({ species: sp, level, mood, item, label: (G.pet ? G.pet.name : 'Your pet') + (level < 2 ? ', still an egg' : '') });
+    return d;
+  }
   function petView (level, mood) {
     const wrap = el('div', 'pet-stage');
-    const sp = G.pet ? G.pet.emoji : '🥚';
-    const body = el('div', 'pet-body ' + mood, level < 2 ? '🥚' : sp);
-    body.style.fontSize = Math.min(5.2, 2.6 + level * 0.15) + 'rem';
-    wrap.appendChild(body);
     const eq = G.equipped && ITEMS.find((x) => x[1] === G.equipped && level >= x[0]);
-    if (eq) wrap.appendChild(el('div', 'pet-item', eq[1]));
+    wrap.appendChild(petSvg(level, mood, eq ? eq[1] : null));
     return wrap;
   }
   function moodFor (s) {
@@ -589,7 +594,7 @@
 
     // home card
     const card = $('pet-card');
-    card.hidden = false;
+    card.hidden = true; // the pet lives in its own 🐾 Pet tab now
     card.textContent = '';
     card.appendChild(petView(L, mood));
     const info = el('div', 'pet-info');
@@ -696,8 +701,8 @@
       const ok = L >= lvl;
       const b = el('button', 'wear' + (G.equipped === ic && ok ? ' on' : '') + (ok ? '' : ' locked'));
       b.type = 'button'; b.disabled = !ok;
-      b.appendChild(el('span', 'w-ic', ok ? ic : '🔒'));
-      b.appendChild(el('small', null, ok ? name : 'Lv ' + lvl));
+      if (ok) { const m = petSvg(Math.max(L, 2), 'content', ic); m.classList.add('mini'); b.appendChild(m); } else b.appendChild(el('span', 'w-ic', '🔒'));
+      b.appendChild(el('small', null, ok ? name : name + ' · Lv ' + lvl));
       b.addEventListener('click', () => { G.equipped = G.equipped === ic ? null : ic; save(); render(); });
       wd.appendChild(b);
     }
@@ -719,7 +724,7 @@
     SPECIES.forEach(([emoji, name]) => {
       const b = el('button', 'wear' + (G.pet && G.pet.emoji === emoji ? ' on' : ''));
       b.type = 'button';
-      b.appendChild(el('span', 'w-ic', emoji));
+      const m = petSvg(6, 'happy', null, emoji); m.classList.add('mini'); b.appendChild(m);
       b.appendChild(el('small', null, name));
       b.addEventListener('click', () => { box.querySelectorAll('.wear').forEach((x) => x.classList.remove('on')); b.classList.add('on'); box.dataset.pick = emoji; });
       box.appendChild(b);
@@ -737,7 +742,7 @@
     $('pet-pick').hidden = true;
     render();
   });
-  $('set-side-home').checked = C.S.sideHome !== false;
+  $('set-side-home').checked = C.S.sideHome === true;
   $('set-side-home').addEventListener('change', () => { C.S.sideHome = $('set-side-home').checked; C.saveSettings(); renderSide(lastSide); });
   $('side-more').addEventListener('click', () => { sideAll = !sideAll; renderSide(lastSide); });
   $('quest-reroll').addEventListener('click', () => {
