@@ -679,3 +679,10 @@ li.tap:focus-visible { outline: 2px solid var(--accent, #7aa2ff); outline-offset
 .ft-cheer { display: flex; gap: 12px; align-items: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
 .ft-cheer-ic { font-size: 2rem; }
 .ft-meal-head .grow, .ft-food .grow { flex: 1; min-width: 0; }
+.ft-edit { margin-left: auto; background: transparent; border: 1px solid var(--line); border-radius: 99px; padding: 2px 8px; font-size: .85rem; cursor: pointer; color: var(--text); }
+.ft-glass.saving, .ft-count.saving { animation: ftpulse .6s ease-in-out infinite alternate; }
+@keyframes ftpulse { to { transform: scale(.9); } }
+@media (prefers-reduced-motion: reduce) { .ft-glass.saving, .ft-count.saving { animation: none; } }
+.toast.bad { border-color: var(--low); }
+.bg-at { font-size: .75rem; font-weight: 700; padding: 2px 7px; border-radius: 99px; background: color-mix(in srgb, var(--text) 10%, transparent); }
+.bg-at.bg-in { color: var(--in); } .bg-at.bg-high { color: var(--high); } .bg-at.bg-low { color: var(--low); }

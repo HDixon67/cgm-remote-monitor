@@ -132,27 +132,86 @@
     if (fiber) t.fiber = r2(fiber);
     return t;
   }
+  // food names → words, for spotting the same food logged in both apps
+  const STOP = new Set('fresh with skin great value original crunchy raw cooked fat the and brand organic whole mini large small medium partly skimmed plain frost glacier freeze food meal snack lunch dinner breakfast treated low cup slice piece serving homemade style regular light reduced free'.split(' '));
+  const words = (s) => new Set(String(s || '').toLowerCase().split(/[^a-z]+/).filter((w) => w.length >= 3 && !STOP.has(w)).map((w) => w.replace(/s$/, '')));
+  const overlap = (a, b) => { for (const w of a) if (b.has(w)) return true; return false; };
+  // Cronometer without timestamps puts every food at midnight
+  const timeless = (x) => { const d = new Date(x.start); return d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0; };
+
   async function importFood (raw, from) {
     if (C.S.foodImport === false) return 0;
     const items = (raw.nutrition || []).filter((x) => x.start >= from && x.n && (x.n.carbs != null || x.n.kcal != null));
-    if (!items.length) return 0;
-    const meals = groupFood(items).map(mealOf).filter((t) => t.carbs >= 0.5 || t.calories >= 20);
-    if (!meals.length) return 0;
-    // meals you logged in CGM Hub (or elsewhere) around the same time: don't count the carbs twice
-    let mine = [];
-    try {
-      mine = C.normTreatments(await C.apiGet('/api/v1/treatments.json', { 'find[carbs][$gt]': '0', 'find[created_at][$gte]': new Date(from - HOUR).toISOString(), count: '500' }))
-        .filter((t) => t.enteredBy !== IMPORTER);
-    } catch (e) { return 0; }
+    if (!items.length) return 0; // nothing from Cronometer (or no permission): change nothing
+    let docs = [];
+    try { docs = await C.apiGet('/api/v1/treatments.json', { 'find[created_at][$gte]': new Date(from - HOUR).toISOString(), count: '1000' }); } catch (e) { return 0; }
+    // what you logged yourself (CGM Hub or elsewhere) vs what this importer saved before
+    const mine = C.normTreatments(docs.filter((d) => d.enteredBy !== IMPORTER)).filter((t) => t.carbs > 0 || (t.raw && t.raw.calories));
+    const before = docs.filter((d) => d.enteredBy === IMPORTER);
+    const logWords = (t) => { const w = words(t.notes); for (const f of (t.raw && t.raw.foods) || []) for (const x of words(f.name)) w.add(x); return w; };
+    const N = window.CGMHubNutrition;
+    const netG = (x) => { const c = (x.n || {}).carbs || 0, f = (x.n || {}).fiber || 0; return !N || N.carbMode() === 'net' ? Math.max(0, c - f) : c; };
+
+    // skip foods you already logged: same name that day, or (with real times) anything within 45 min
+    const keep = [];
+    const byDay = {};
+    for (const x of items) {
+      const k = dayKey(x.start);
+      const day = mine.filter((t) => dayKey(t.t) === k);
+      const w = words(x.name);
+      const hit = day.find((t) => overlap(w, logWords(t)));
+      if (hit) { (byDay[k] = byDay[k] || { matched: new Set(), rest: [] }).matched.add(hit); continue; }
+      if (!timeless(x) && day.some((t) => Math.abs(t.t - x.start) <= 45 * MIN)) continue;
+      (byDay[k] = byDay[k] || { matched: new Set(), rest: [] }).rest.push(x);
+      keep.push(x);
+    }
+    // foods without times: a log you didn't name (e.g. "Food 32 g") matches the group of leftover foods whose carbs add up to it
+    const drop = new Set();
+    for (const k of Object.keys(byDay)) {
+      const { matched, rest } = byDay[k];
+      let loose = rest.filter(timeless);
+      const unnamed = mine.filter((t) => dayKey(t.t) === k && !matched.has(t)).sort((a, b) => b.carbs - a.carbs);
+      for (const log of unnamed) {
+        if (!loose.length || loose.length > 14) break;
+        const tol = Math.max(4, 0.15 * log.carbs);
+        let best = null;
+        for (let m = 1; m < (1 << loose.length); m++) {
+          let sum = 0, n = 0; for (let i = 0; i < loose.length; i++) if (m & (1 << i)) { sum += netG(loose[i]); n++; }
+          const d = Math.abs(sum - log.carbs);
+          // within the tolerance, prefer the bigger group (small low-carb sides like cucumber belong to the meal too)
+          if (d <= tol && (!best || n > best.n || (n === best.n && d < best.d))) best = { m, d, n };
+        }
+        if (!best) continue;
+        loose = loose.filter((x, i) => { if (best.m & (1 << i)) { drop.add(x); return false; } return true; });
+      }
+    }
+    const left = keep.filter((x) => !drop.has(x));
+    // timed foods → meals; foods without times → one "time unknown" entry per day
+    const meals = groupFood(left.filter((x) => !timeless(x))).map((g) => mealOf(g));
+    const loose = {};
+    for (const x of left.filter(timeless)) (loose[dayKey(x.start)] = loose[dayKey(x.start)] || []).push(x);
+    for (const k of Object.keys(loose)) {
+      const t = mealOf({ start: loose[k][0].start, meal: 0, source: loose[k][0].source, items: loose[k] });
+      t.timeUnknown = true; t.mealGroup = 'Other';
+      meals.push(t);
+    }
+    const out = meals.filter((t) => t.carbs >= 0.5 || t.calories >= 20);
+
     let seen = {}; try { seen = JSON.parse(localStorage.getItem(FOOD_KEY)) || {}; } catch (e) { /* ignore */ }
     let n = 0;
-    for (const t of meals) {
-      const at = Date.parse(t.created_at);
-      if (mine.some((m) => Math.abs(m.t - at) <= 45 * MIN)) continue;
+    const keepKeys = new Set();
+    for (const t of out) {
+      keepKeys.add(t.created_at);
       const sig = t.carbs + '|' + (t.calories || 0) + '|' + t.foods.length;
-      if (seen[t.created_at] === sig) continue; // already saved, nothing changed
+      const exists = before.some((d) => d.created_at === t.created_at);
+      if (exists && seen[t.created_at] === sig) continue; // already saved, nothing changed
       await C.apiPostTreatment(t);
       seen[t.created_at] = sig; n++;
+    }
+    // earlier imports that turned out to be duplicates (or were removed in Cronometer): delete them
+    for (const d of before) {
+      if (keepKeys.has(d.created_at) || Date.parse(d.created_at) < from) continue;
+      try { await C.apiDeleteTreatment(d._id); delete seen[d.created_at]; } catch (e) { /* no delete permission: leave it */ }
     }
     for (const k of Object.keys(seen)) if (Date.parse(k) < Date.now() - 20 * DAY) delete seen[k];
     try { localStorage.setItem(FOOD_KEY, JSON.stringify(seen)); } catch (e) { /* ignore */ }
@@ -239,5 +298,5 @@
     document.addEventListener('visibilitychange', () => { if (!document.hidden) sync(false); });
   }
 
-  window.CGMHubHealth = { native, load, cachedDay, cachedRange, refreshCache, sync, summarize, groupFood, mealOf, importFood, IMPORTER };
+  window.CGMHubHealth = { native, load, cachedDay, cachedRange, refreshCache, sync, summarize, groupFood, mealOf, importFood, IMPORTER, words };
 })();
