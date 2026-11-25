@@ -89,26 +89,47 @@
     const top = $('ft-top'); top.textContent = '';
     const side = (label, v) => { const d = el('div', 'ft-side'); d.appendChild(el('div', 'ft-side-l', label)); d.appendChild(el('div', 'ft-side-v', String(v))); return d; };
     const mid = el('div', 'ft-mid');
-    mid.appendChild(ring(kcal, burned, G.kcal));
-    const left = Math.round(G.kcal - kcal + burned);
     const center = el('div', 'ft-center');
-    center.appendChild(el('div', 'ft-c-l', left >= 0 ? 'Remaining' : 'Over'));
-    center.appendChild(el('div', 'ft-c-v', String(Math.abs(left))));
-    center.appendChild(el('div', 'ft-c-g', 'Goal ' + G.kcal + ' kcal'));
-    mid.appendChild(center);
-    top.append(side('Eaten', Math.round(kcal)), mid, side('Burned', burned));
-    if (unknownKcal) top.appendChild(el('div', 'muted small ft-note', unknownKcal + ' log' + (unknownKcal === 1 ? '' : 's') + ' without calories (typed by hand) aren’t in the ring.'));
+    const net = !N() || N().carbMode() === 'net';
+    const carbGoal = Math.round(G.carbs - (net ? ((N() && N().targets().fiber) || 25) : 0));
+    const fiber = foodLogs.reduce((a, t) => a + (Number(t.fiber) || 0), 0);
+    const insulin = trs.filter((t) => t.insulin > 0 && !C.isBasal(t)).reduce((a, t) => a + t.insulin, 0);
+    if (C.S.foodFocus === 'calories') {
+      mid.appendChild(ring(kcal, burned, G.kcal));
+      const left = Math.round(G.kcal - kcal + burned);
+      center.appendChild(el('div', 'ft-c-l', left >= 0 ? 'Remaining' : 'Over'));
+      center.appendChild(el('div', 'ft-c-v', String(Math.abs(left))));
+      center.appendChild(el('div', 'ft-c-g', 'Goal ' + G.kcal + ' kcal'));
+      mid.appendChild(center);
+      top.append(side('Eaten', Math.round(kcal)), mid, side('Burned', burned));
+      if (unknownKcal) top.appendChild(el('div', 'muted small ft-note', unknownKcal + ' log' + (unknownKcal === 1 ? '' : 's') + ' without calories (typed by hand) aren’t in the ring.'));
+    } else {
+      // carbs first: what matters for glucose; calories are a small line
+      mid.appendChild(ring(carbs, 0, carbGoal));
+      center.appendChild(el('div', 'ft-c-l', net ? 'Net carbs' : 'Carbs'));
+      center.appendChild(el('div', 'ft-c-v', String(Math.round(carbs))));
+      center.lastChild.appendChild(el('small', 'ft-unit', 'g'));
+      center.appendChild(el('div', 'ft-c-g', 'of ' + carbGoal + ' g'));
+      mid.appendChild(center);
+      top.append(side('🥦 Fibre', Math.round(fiber) + ' g'), mid, side('💉 Rapid', Math.round(insulin * 10) / 10 + ' u'));
+      top.appendChild(el('div', 'muted small ft-note', '🔥 ' + Math.round(kcal) + ' kcal eaten' + (burned ? ' · ' + burned + ' burned' : '') + (unknownKcal ? ' · ' + unknownKcal + ' log' + (unknownKcal === 1 ? '' : 's') + ' without calories' : '')));
+    }
 
     // macros
     const mac = $('ft-macros'); mac.textContent = '';
-    const net = !N() || N().carbMode() === 'net';
-    [[net ? 'Net carbs' : 'Carbs', carbs, G.carbs - (net ? ((N() && N().targets().fiber) || 25) : 0), 'c'], ['Protein', protein, G.protein, 'p'], ['Fat', fat, G.fat, 'f']].forEach(([l, v, g, cls]) => {
+    const macros = C.S.foodFocus === 'calories'
+      ? [[net ? 'Net carbs' : 'Carbs', carbs, carbGoal, 'c'], ['Protein', protein, G.protein, 'p'], ['Fat', fat, G.fat, 'f']]
+      : [['Protein', protein, G.protein, 'p'], ['Fat', fat, G.fat, 'f'], ['Fibre', fiber, (N() && N().targets().fiber) || 25, 'c']];
+    macros.forEach(([l, v, g, cls]) => {
       const card = el('div', 'ft-mac');
       card.appendChild(el('div', 'ft-mac-l', l));
       card.appendChild(el('div', 'ft-mac-v', Math.round(v) + ' / ' + Math.round(g) + ' g'));
       const bar = el('div', 'ft-bar ' + cls); const f = el('span'); f.style.width = Math.min(100, (v / Math.max(1, g)) * 100) + '%'; bar.appendChild(f); card.appendChild(bar);
       mac.appendChild(card);
     });
+
+    // highlighted nutrients (tap for details / daily report)
+    if (window.CGMHubNutReport && $('ft-nutri')) window.CGMHubNutReport.renderHighlights($('ft-nutri'), foodLogs);
 
     // meals
     const ml = $('ft-meals'); ml.textContent = '';

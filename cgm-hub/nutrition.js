@@ -31,8 +31,74 @@
     ['vitD', 'Vitamin D', 'µg', ['328'], 'vitamin-d_100g', 1e6, 20, 'min'],
     ['vitB12', 'Vitamin B12', 'µg', ['418'], 'vitamin-b12_100g', 1e6, 2.4, 'min'],
     ['folate', 'Folate', 'µg', ['417', '435'], 'folates_100g', 1e6, 400, 'min'],
+    // more vitamins, minerals and fats (Cronometer / Health Connect and most databases have these)
+    ['thiamin', 'B1 (Thiamine)', 'mg', ['404'], 'vitamin-b1_100g', 1000, 1.2, 'min'],
+    ['riboflavin', 'B2 (Riboflavin)', 'mg', ['405'], 'vitamin-b2_100g', 1000, 1.3, 'min'],
+    ['niacin', 'B3 (Niacin)', 'mg', ['406'], 'vitamin-pp_100g', 1000, 16, 'min'],
+    ['pantothenic', 'B5 (Pantothenic acid)', 'mg', ['410'], 'pantothenic-acid_100g', 1000, 5, 'min'],
+    ['vitB6', 'B6 (Pyridoxine)', 'mg', ['415'], 'vitamin-b6_100g', 1000, 1.7, 'min'],
+    ['vitE', 'Vitamin E', 'mg', ['323'], 'vitamin-e_100g', 1000, 15, 'min'],
+    ['vitK', 'Vitamin K', 'µg', ['430'], 'vitamin-k_100g', 1e6, 120, 'min'],
+    ['copper', 'Copper', 'mg', ['312'], 'copper_100g', 1000, 0.9, 'min'],
+    ['manganese', 'Manganese', 'mg', ['315'], 'manganese_100g', 1000, 2.3, 'min'],
+    ['phosphorus', 'Phosphorus', 'mg', ['305'], 'phosphorus_100g', 1000, 1250, 'min'],
+    ['selenium', 'Selenium', 'µg', ['317'], 'selenium_100g', 1e6, 55, 'min'],
+    ['monoFat', 'Monounsaturated fat', 'g', ['645'], 'monounsaturated-fat_100g', 1, null, 'ref'],
+    ['polyFat', 'Polyunsaturated fat', 'g', ['646'], 'polyunsaturated-fat_100g', 1, null, 'ref'],
   ].map(([key, label, unit, fdc, off, offF, dv, kind]) => ({ key, label, unit, fdc, off, offF, dv, kind }));
   const BY = Object.fromEntries(NUTS.map((n) => [n.key, n]));
+  const GROUPS = [
+    ['Carbohydrates', ['carbs', 'fiber', 'sugars', 'addedSugars']],
+    ['Protein', ['protein']],
+    ['Fats', ['fat', 'satFat', 'monoFat', 'polyFat', 'transFat', 'cholesterol']],
+    ['Vitamins', ['thiamin', 'riboflavin', 'niacin', 'pantothenic', 'vitB6', 'vitB12', 'folate', 'vitA', 'vitC', 'vitD', 'vitE', 'vitK']],
+    ['Minerals', ['calcium', 'copper', 'iron', 'magnesium', 'manganese', 'phosphorus', 'potassium', 'selenium', 'sodium', 'zinc']],
+  ];
+  // Dietary Reference Intakes (RDA or AI) by life stage; 'dv' = the label Daily Values above
+  const DRI = {
+    f19: { label: 'Women 19–50', fiber: 25, protein: 46, calcium: 1000, iron: 18, magnesium: 320, zinc: 8, potassium: 2600, vitA: 700, vitC: 75, vitD: 15, vitB12: 2.4, folate: 400, thiamin: 1.1, riboflavin: 1.1, niacin: 14, pantothenic: 5, vitB6: 1.3, vitE: 15, vitK: 90, copper: 0.9, manganese: 1.8, phosphorus: 700, selenium: 55 },
+    f51: { label: 'Women 51+', fiber: 21, protein: 46, calcium: 1200, iron: 8, magnesium: 320, zinc: 8, potassium: 2600, vitA: 700, vitC: 75, vitD: 15, vitB12: 2.4, folate: 400, thiamin: 1.1, riboflavin: 1.1, niacin: 14, pantothenic: 5, vitB6: 1.5, vitE: 15, vitK: 90, copper: 0.9, manganese: 1.8, phosphorus: 700, selenium: 55 },
+    m19: { label: 'Men 19–50', fiber: 38, protein: 56, calcium: 1000, iron: 8, magnesium: 420, zinc: 11, potassium: 3400, vitA: 900, vitC: 90, vitD: 15, vitB12: 2.4, folate: 400, thiamin: 1.2, riboflavin: 1.3, niacin: 16, pantothenic: 5, vitB6: 1.3, vitE: 15, vitK: 120, copper: 0.9, manganese: 2.3, phosphorus: 700, selenium: 55 },
+    m51: { label: 'Men 51+', fiber: 30, protein: 56, calcium: 1000, iron: 8, magnesium: 420, zinc: 11, potassium: 3400, vitA: 900, vitC: 90, vitD: 15, vitB12: 2.4, folate: 400, thiamin: 1.2, riboflavin: 1.3, niacin: 16, pantothenic: 5, vitB6: 1.7, vitE: 15, vitK: 120, copper: 0.9, manganese: 2.3, phosphorus: 700, selenium: 55 },
+  };
+  // Tolerable Upper Intake Levels (adults). Some (niacin, folate, magnesium) apply to supplements / fortified foods only.
+  const UL = { vitA: 3000, vitC: 2000, vitD: 100, vitE: 1000, niacin: 35, vitB6: 100, folate: 1000, calcium: 2500, iron: 45, zinc: 40, copper: 10, manganese: 11, phosphorus: 4000, selenium: 400 };
+  // what each nutrient does, in a sentence or two
+  const FUNCTION = {
+    fiber: 'Fibre slows how fast carbs are absorbed, which can soften glucose rises. It also feeds healthy gut bacteria and helps you feel full.',
+    protein: 'Protein builds and repairs muscles and tissues and keeps you full. Large amounts can raise glucose slowly, hours after a meal.',
+    fat: 'Fat carries vitamins A, D, E and K and gives energy. It slows digestion, so fatty meals can delay a glucose rise.',
+    carbs: 'Carbohydrates are the body’s quickest fuel and the nutrient that raises glucose the most.',
+    sugars: 'Sugars are the fastest carbs. Natural sugars in fruit and milk come with fibre or protein; added sugars don’t.',
+    calcium: 'Calcium builds bones and teeth and helps muscles and nerves work.',
+    iron: 'Iron carries oxygen in your blood. Periods raise iron needs, and low iron can cause tiredness.',
+    magnesium: 'Magnesium helps hundreds of processes, including how insulin works. It is often low in people with diabetes.',
+    zinc: 'Zinc supports the immune system, wound healing and taste.',
+    potassium: 'Potassium keeps the heart, muscles and nerves working and helps balance blood pressure.',
+    sodium: 'Sodium balances fluids, but too much can raise blood pressure.',
+    vitA: 'Vitamin A keeps eyes, skin and the immune system healthy.',
+    vitC: 'Vitamin C helps heal wounds, supports immunity and helps you absorb iron from plant foods.',
+    vitD: 'Vitamin D helps you absorb calcium for strong bones and supports the immune system. Many people are low, especially in winter.',
+    vitE: 'Vitamin E is an antioxidant that protects cells.',
+    vitK: 'Vitamin K helps blood clot and supports bones.',
+    vitB12: 'B12 keeps nerves and red blood cells healthy. Metformin can lower B12 over time.',
+    folate: 'Folate (B9) is needed to make DNA and new cells, including red blood cells. Needs are higher before and during pregnancy.',
+    thiamin: 'B1 helps turn carbs into energy and supports nerves.',
+    riboflavin: 'B2 helps turn food into energy and keeps skin and eyes healthy.',
+    niacin: 'B3 helps turn food into energy and supports skin and nerves.',
+    pantothenic: 'B5 helps make energy from food and make hormones.',
+    vitB6: 'B6 helps the body use protein and make brain chemicals.',
+    copper: 'Copper helps make red blood cells and supports nerves and immunity.',
+    manganese: 'Manganese helps bones form and helps process carbs and fats.',
+    phosphorus: 'Phosphorus works with calcium to build bones and teeth and helps make energy.',
+    selenium: 'Selenium protects cells and supports the thyroid.',
+    satFat: 'Saturated fat raises LDL cholesterol, which matters for heart health.',
+    addedSugars: 'Added sugars raise glucose quickly and add calories without other nutrients.',
+    cholesterol: 'Cholesterol from food has a smaller effect on blood cholesterol than saturated fat does.',
+    monoFat: 'Monounsaturated fats (olive oil, avocado, nuts) are heart-friendly.',
+    polyFat: 'Polyunsaturated fats include omega-3s and omega-6s, which the body can’t make.',
+    transFat: 'Trans fat raises bad cholesterol and lowers good cholesterol. Less is better.',
+  };
 
   const ADD = {
     fiber: ['lentils, chickpeas or black beans', 'berries (raspberries are very high)', 'chia or ground flax in yogurt', 'oats or whole-grain bread', 'veggies at every meal'],
@@ -47,6 +113,17 @@
     vitD: ['salmon or trout', 'fortified milk or plant milk', 'egg yolks', 'UV-grown mushrooms'],
     vitB12: ['fish, meat or chicken', 'milk, yogurt or eggs', 'fortified plant milk or nutritional yeast'],
     folate: ['leafy greens', 'lentils and chickpeas', 'asparagus or broccoli', 'avocado'],
+    thiamin: ['whole-grain or enriched bread and cereal', 'pork', 'beans and lentils', 'sunflower seeds'],
+    riboflavin: ['milk and yogurt', 'eggs', 'mushrooms', 'almonds'],
+    niacin: ['chicken, turkey or tuna', 'peanuts', 'brown rice', 'mushrooms'],
+    pantothenic: ['mushrooms', 'avocado', 'chicken', 'sunflower seeds'],
+    vitB6: ['chickpeas', 'salmon or tuna', 'chicken', 'potatoes or bananas (count the carbs)'],
+    vitE: ['sunflower seeds or almonds', 'peanut butter', 'spinach', 'avocado'],
+    vitK: ['kale, spinach or collards', 'broccoli', 'Brussels sprouts', 'lettuce'],
+    copper: ['cashews', 'sunflower seeds', 'dark chocolate (small piece)', 'mushrooms'],
+    manganese: ['oats', 'brown rice', 'nuts', 'pineapple (count the carbs)'],
+    phosphorus: ['milk and yogurt', 'chicken or fish', 'lentils', 'pumpkin seeds'],
+    selenium: ['Brazil nuts (1–2 is plenty)', 'tuna or salmon', 'eggs', 'whole wheat bread'],
   };
   const LIMIT = {
     sodium: ['fewer packaged, restaurant and fast foods', 'rinse canned beans and veggies', 'compare labels: aim for under 15% DV per serving'],
@@ -168,8 +245,12 @@
   // ---------- targets ----------
   function targets () {
     const saved = C.S.nutTargets || {};
+    const prof = DRI[C.S.driProfile] || {};
     const out = {};
-    for (const n of NUTS) { const v = saved[n.key] !== undefined ? saved[n.key] : n.dv; if (v != null && v !== '' && Number(v) > 0) out[n.key] = Number(v); }
+    for (const n of NUTS) {
+      const v = saved[n.key] !== undefined ? saved[n.key] : prof[n.key] !== undefined ? prof[n.key] : n.dv;
+      if (v != null && v !== '' && Number(v) > 0) out[n.key] = Number(v);
+    }
     return out;
   }
 
@@ -261,7 +342,8 @@
       const lab = el('label', 'field nut-field');
       lab.appendChild(el('span', null, n.label + ' (' + n.unit + ')' + (n.kind === 'max' ? ' · limit' : n.kind === 'min' ? ' · aim for' : '')));
       const i = el('input'); i.type = 'number'; i.inputMode = 'decimal'; i.min = '0'; i.step = 'any';
-      i.placeholder = n.dv != null ? String(n.dv) : 'none';
+      const def = (DRI[C.S.driProfile] || {})[n.key] !== undefined ? DRI[C.S.driProfile][n.key] : n.dv;
+      i.placeholder = def != null ? String(def) : 'none';
       if (saved[n.key] !== undefined && saved[n.key] !== null) i.value = saved[n.key];
       i.dataset.key = n.key;
       lab.appendChild(i);
@@ -269,6 +351,10 @@
     }
     const mode = document.getElementById('set-carbmode');
     if (mode) mode.value = carbMode();
+    const prof = document.getElementById('set-dri');
+    if (prof) prof.value = DRI[C.S.driProfile] ? C.S.driProfile : 'dv';
+    const focus = document.getElementById('set-foodfocus');
+    if (focus) focus.value = C.S.foodFocus === 'calories' ? 'calories' : 'carbs';
   }
   function saveSettings () {
     const t = {};
@@ -276,6 +362,10 @@
     C.S.nutTargets = t;
     const mode = document.getElementById('set-carbmode');
     if (mode) C.S.carbMode = mode.value;
+    const prof = document.getElementById('set-dri');
+    if (prof) C.S.driProfile = prof.value;
+    const focus = document.getElementById('set-foodfocus');
+    if (focus) C.S.foodFocus = focus.value;
     C.saveSettings();
   }
   (function wire () {
@@ -286,5 +376,5 @@
   })();
   C.hooks.view.push((v) => { if (v === 'settings') renderSettings(); });
 
-  window.CGMHubNutrition = { NUTS, BY, fromFdc, fromOff, unitsFrom, unitLabel, portionFrom, scaled, netOf, carbMode, factsPanel, targets, totalsOf, renderNutrition };
+  window.CGMHubNutrition = { NUTS, BY, GROUPS, DRI, UL, FUNCTION, ADD, WHY, fmtN, fromFdc, fromOff, unitsFrom, unitLabel, portionFrom, scaled, netOf, carbMode, factsPanel, targets, totalsOf, renderNutrition };
 })();

@@ -108,6 +108,11 @@
     }
     return groups;
   }
+  // one food with all its nutrients (in the app's units), for the Food tab's "top sources"
+  function foodOf (x) {
+    const n = {}; for (const k in (x.n || {})) n[k] = r2(toUnit(k, Number(x.n[k]) || 0));
+    return { name: x.name || 'Food', carbs: r2(n.carbs || 0), kcal: Math.round(n.kcal || 0), n };
+  }
   function mealOf (g) {
     const N = window.CGMHubNutrition;
     const n = {};
@@ -122,7 +127,7 @@
       carbs: Math.round(carbs * 10) / 10, totalCarbs: r2(total), carbMode: net ? 'net' : 'total',
       mealGroup: MEAL_NAMES[g.meal] || (h >= 4 && h < 10.5 ? 'Breakfast' : h >= 11 && h < 15 ? 'Lunch' : h >= 17 && h < 21.5 ? 'Dinner' : 'Snack'),
       notes: (names.join(' + ') || sourceName(g.source) + ' meal').slice(0, 140),
-      foods: g.items.map((x) => ({ name: x.name || 'Food', carbs: r2(toUnit('carbs', (x.n || {}).carbs || 0)), kcal: Math.round((x.n || {}).kcal || 0) })),
+      foods: g.items.map(foodOf),
       source: g.source || '', nutrients: {},
     };
     for (const k in n) t.nutrients[k] = r2(n[k]);
@@ -155,13 +160,16 @@
     // skip foods you already logged: same name that day, or (with real times) anything within 45 min
     const keep = [];
     const byDay = {};
+    const enrich = new Map(); // your log → the Cronometer foods that are the same meal (their nutrition gets added to it)
+    const give = (log, x) => { if (!enrich.has(log)) enrich.set(log, []); enrich.get(log).push(x); };
     for (const x of items) {
       const k = dayKey(x.start);
       const day = mine.filter((t) => dayKey(t.t) === k);
       const w = words(x.name);
       const hit = day.find((t) => overlap(w, logWords(t)));
-      if (hit) { (byDay[k] = byDay[k] || { matched: new Set(), rest: [] }).matched.add(hit); continue; }
-      if (!timeless(x) && day.some((t) => Math.abs(t.t - x.start) <= 45 * MIN)) continue;
+      if (hit) { (byDay[k] = byDay[k] || { matched: new Set(), rest: [] }).matched.add(hit); give(hit, x); continue; }
+      const near = !timeless(x) && day.filter((t) => Math.abs(t.t - x.start) <= 45 * MIN).sort((a, b) => Math.abs(a.t - x.start) - Math.abs(b.t - x.start))[0];
+      if (near) { give(near, x); continue; }
       (byDay[k] = byDay[k] || { matched: new Set(), rest: [] }).rest.push(x);
       keep.push(x);
     }
@@ -182,7 +190,7 @@
           if (d <= tol && (!best || n > best.n || (n === best.n && d < best.d))) best = { m, d, n };
         }
         if (!best) continue;
-        loose = loose.filter((x, i) => { if (best.m & (1 << i)) { drop.add(x); return false; } return true; });
+        loose = loose.filter((x, i) => { if (best.m & (1 << i)) { drop.add(x); give(log, x); return false; } return true; });
       }
     }
     const left = keep.filter((x) => !drop.has(x));
@@ -212,6 +220,16 @@
     for (const d of before) {
       if (keepKeys.has(d.created_at) || Date.parse(d.created_at) < from) continue;
       try { await C.apiDeleteTreatment(d._id); delete seen[d.created_at]; } catch (e) { /* no delete permission: leave it */ }
+    }
+    for (const [log, foods] of enrich) {
+      const raw = log.raw || {};
+      if (raw.nutrients && raw.nutritionFrom !== 'Cronometer') continue; // you added foods with full nutrition in CGM Hub: keep yours
+      const m = mealOf({ start: log.t, meal: 0, source: foods[0].source, items: foods });
+      const same = raw.nutritionFrom === 'Cronometer' && JSON.stringify(raw.nutrients) === JSON.stringify(m.nutrients);
+      if (same) continue;
+      const out = Object.assign({}, raw, { nutrients: m.nutrients, foods: m.foods, nutritionFrom: 'Cronometer' });
+      for (const k of ['calories', 'protein', 'fat', 'fiber', 'totalCarbs']) if (m[k] != null) out[k] = m[k];
+      try { await C.apiPutTreatment(out); n++; } catch (e) { /* no edit permission: leave it */ }
     }
     for (const k of Object.keys(seen)) if (Date.parse(k) < Date.now() - 20 * DAY) delete seen[k];
     try { localStorage.setItem(FOOD_KEY, JSON.stringify(seen)); } catch (e) { /* ignore */ }
