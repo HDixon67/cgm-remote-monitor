@@ -459,7 +459,10 @@
     const r = (v) => Math.round(v * 100) / 100;
     t.nutrients = {}; for (const k in n) t.nutrients[k] = r(n[k]);
     t.carbMode = N().carbMode();
-    t.foods = basket.map((x) => ({ name: x.name, carbs: Math.round((x.carbs || 0) * 10) / 10, kcal: x.n && x.n.kcal != null ? Math.round(x.n.kcal) : null }));
+    t.foods = basket.map((x) => {
+      const fn = {}; if (x.n) for (const k in x.n) if (typeof x.n[k] === 'number') fn[k] = r(x.n[k]);
+      return { name: x.name, carbs: Math.round((x.carbs || 0) * 10) / 10, kcal: x.n && x.n.kcal != null ? Math.round(x.n.kcal) : null, n: fn };
+    });
     if (n.carbs != null) t.totalCarbs = r(n.carbs);
     if (n.kcal) t.calories = Math.round(n.kcal);
     if (n.fat) t.fat = r(n.fat);

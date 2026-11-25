@@ -373,6 +373,7 @@
         <div class="ft-macros" id="ft-macros"></div>
         <button class="link ft-goals" id="ft-goals" type="button">Edit goals</button>
       </div>
+      <div class="card ft-nutri" id="ft-nutri"></div>
       <h3 class="ft-h">Meals logged</h3>
       <div id="ft-meals"></div>
       <div class="card ft-gi" id="ft-gi"></div>
@@ -639,6 +640,11 @@
         <label class="field"><span>Count carbs as</span>
           <select id="set-carbmode"><option value="net">Net carbs (carbs − fibre)</option><option value="total">Total carbs</option></select></label>
         <p class="muted small">This is what gets logged and used by the bolus calculator and forecast. Ask your care team which way they want you to count.</p>
+        <label class="field"><span>Food tab focus</span>
+          <select id="set-foodfocus"><option value="carbs">Carbs first (calories small)</option><option value="calories">Calories first</option></select></label>
+        <label class="field"><span>Nutrient targets for</span>
+          <select id="set-dri"><option value="dv">Standard label Daily Values</option><option value="f19">Women 19–50</option><option value="f51">Women 51+</option><option value="m19">Men 19–50</option><option value="m51">Men 51+</option></select></label>
+        <p class="muted small">Uses the Dietary Reference Intakes (RDA / AI) for that group, like Cronometer. Numbers you type under Daily targets win.</p>
         <details class="help">
           <summary>Daily targets</summary>
           <p class="muted small">Standard adult Daily Values to start. Change them to what your dietitian recommends; leave blank to use the default. Calories and carbs have no default.</p>
@@ -761,6 +767,7 @@
   <script src="dideat.js"></script>
   <script src="usual.js"></script>
   <script src="widget.js"></script>
+  <script src="nutreport.js"></script>
   <script src="foodtab.js"></script>
 </body>
 </html>
